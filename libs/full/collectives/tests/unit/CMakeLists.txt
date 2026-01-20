@@ -42,6 +42,7 @@ if(HPX_WITH_NETWORKING)
       scatter
       scatter_hierarchical
       scatter_sync
+      collectives_hang_repro
   )
 
   foreach(test ${tests})
