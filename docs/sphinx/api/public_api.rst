@@ -18,6 +18,13 @@ needed. All names below are also available in the top-level ``hpx`` namespace un
 otherwise noted. The names in ``hpx`` should be preferred. The names in
 sub-namespaces will eventually be removed.
 
+.. note::
+
+   Throughout this documentation, items listed in tables without a corresponding "C++ standard"
+   reference are **HPX-specific extensions** that do not have equivalents in the C++ standard
+   library. These extensions provide additional functionality for parallel and distributed
+   computing that is not available in ``std``.
+
 .. _public_api_header_hpx_algorithm:
 
 ``hpx/algorithm.hpp``
@@ -199,6 +206,12 @@ standard library header :cppreference-header:`any`.
 
 :cpp:type:`hpx::any` is compatible with ``std::any``.
 
+.. note::
+
+   The types :cpp:type:`hpx::any_nonser` and :cpp:type:`hpx::unique_any_nonser`, along with
+   their factory functions, are HPX-specific extensions that provide non-serializable variants
+   of ``std::any`` for performance-critical local use cases.
+
 Classes
 -------
 
@@ -288,6 +301,12 @@ Classes
 The header :hpx-header:`libs/full/include/include,hpx/channel.hpp` contains a local and a
 distributed channel implementation. This  functionality is also exposed through the ``hpx::distributed``
 namespace. The name in ``hpx::distributed`` should be preferred.
+
+.. note::
+
+   :cpp:class:`hpx::channel` is an HPX-specific extension that provides communication channels
+   for both local and distributed scenarios. It does not have a direct equivalent in the C++
+   standard library.
 
 Classes
 -------
@@ -437,6 +456,13 @@ The header :hpx-header:`libs/core/include_local/include,hpx/functional.hpp` corr
 C++ standard library header :cppreference-header:`functional`. :cpp:class:`hpx::function` is a more
 efficient and serializable replacement for ``std::function``.
 
+.. note::
+
+   :cpp:class:`hpx::function_ref` is based on proposal |p0792|_ and provides a lightweight,
+   non-owning reference to a callable. :cpp:struct:`hpx::scoped_annotation` and
+   :cpp:func:`hpx::annotated_function` are HPX-specific extensions for performance analysis
+   and profiling support.
+
 Constants
 ---------
 
@@ -503,6 +529,18 @@ information about extensions to futures compared to the C++ standard library.
 This header file also contains overloads of :cpp:func:`hpx::async`,
 :cpp:func:`hpx::post`, :cpp:func:`hpx::sync`, and :cpp:func:`hpx::dataflow` that can be used with
 actions. See :ref:`action_invocation` for more information about invoking actions.
+
+.. note::
+
+   The following are HPX-specific extensions without ``std`` equivalents:
+   :cpp:func:`hpx::post`, :cpp:func:`hpx::sync`, :cpp:func:`hpx::dataflow`,
+   :cpp:func:`hpx::make_future`, :cpp:func:`hpx::make_shared_future`,
+   :cpp:func:`hpx::make_ready_future_alloc`, :cpp:func:`hpx::make_ready_future_at`,
+   :cpp:func:`hpx::make_ready_future_after`, :cpp:func:`hpx::when_some`,
+   :cpp:func:`hpx::when_each`, :cpp:func:`hpx::wait_all`, :cpp:func:`hpx::wait_any`,
+   :cpp:func:`hpx::wait_some`, and :cpp:func:`hpx::wait_each`. Some functions like
+   :cpp:func:`hpx::make_ready_future`, :cpp:func:`hpx::make_exceptional_future`,
+   :cpp:func:`hpx::when_all`, and :cpp:func:`hpx::when_any` are based on proposal |p0159|_.
 
 Classes
 -------
@@ -572,6 +610,12 @@ Functions
 The header :hpx-header:`libs/full/init_runtime/include,hpx/init.hpp` contains functionality for
 starting, stopping, suspending, and resuming the |hpx| runtime. This is the main way to explicitly
 start the |hpx| runtime. See :ref:`starting_hpx` for more details on starting the |hpx| runtime.
+
+.. note::
+
+   All functionality in this header is HPX-specific and does not have equivalents in the C++
+   standard library. These functions and classes are essential for managing the HPX runtime
+   lifecycle.
 
 Classes
 -------
@@ -644,6 +688,14 @@ Classes
 
 The header :hpx-header:`libs/core/include_local/include,hpx/mutex.hpp` corresponds to the
 C++ standard library header :cppreference-header:`mutex`.
+
+.. note::
+
+   :cpp:class:`hpx::no_mutex`, :cpp:class:`hpx::spinlock`, and :cpp:class:`hpx::unlock_guard`
+   are HPX-specific extensions. :cpp:class:`hpx::no_mutex` is a no-op mutex for template
+   compatibility, :cpp:class:`hpx::spinlock` provides a user-space spinlock implementation,
+   and :cpp:class:`hpx::unlock_guard` is the inverse of ``std::lock_guard`` that unlocks
+   during its lifetime.
 
 Classes
 -------
@@ -1150,6 +1202,12 @@ Classes
 The header :hpx-header:`libs/core/include_local/include,hpx/unwrap.hpp` contains utilities for
 unwrapping futures.
 
+.. note::
+
+   All functionality in this header is HPX-specific and does not have equivalents in the C++
+   standard library. These utilities simplify working with nested futures and future-returning
+   callables.
+
 Classes
 -------
 
@@ -1193,6 +1251,12 @@ Functions
 
 The header :hpx-header:`libs/core/version/include,hpx/version.hpp` provides version information
 about |hpx|.
+
+.. note::
+
+   All functionality in this header is HPX-specific and does not have equivalents in the C++
+   standard library. These macros and functions provide runtime and compile-time version
+   information for HPX.
 
 Macros
 ------
