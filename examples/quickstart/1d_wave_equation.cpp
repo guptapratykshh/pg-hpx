@@ -78,6 +78,7 @@ struct data
       : mtx()
       , u_value(0.0)
       , computed(false)
+      , started(false)
     {
     }
 
@@ -87,6 +88,7 @@ struct data
       : mtx()
       , u_value(other.u_value)
       , computed(other.computed)
+      , started(other.started)
     {
     }
 
@@ -94,12 +96,14 @@ struct data
     {
         u_value = other.u_value;
         computed = other.computed;
+        started = other.started;
         return *this;
     }
 
     hpx::mutex mtx;
     double u_value;
     bool computed;
+    bool started;
 };
 
 std::vector<std::vector<data>> u;
@@ -132,60 +136,78 @@ double calculate_u_tplus_x_1st(
 double wave(std::uint64_t t, std::uint64_t x)
 {
     {
-        std::lock_guard<hpx::mutex> l(u[t][x].mtx);
-        //  hpx::util::format_to(cout, "calling wave... t={1} x={2}\n", t, x);
+        std::unique_lock<hpx::mutex> l(u[t][x].mtx);
         if (u[t][x].computed)
         {
-            //cout << ("already computed!\n");
             return u[t][x].u_value;
         }
-        u[t][x].computed = true;
 
-        if (t == 0)    //first timestep are initial values
+        if (u[t][x].started)
         {
-            //        hpx::util::format_to(cout, "first timestep\n");
-            u[t][x].u_value = std::sin(
-                2. * pi * static_cast<double>(x) * dx);    // initial u(x) value
+            // Another thread is already computing this cell.
+            // Wait for it to finish.
+            while (!u[t][x].computed)
+            {
+                // We use a simple retry/yield here as adding a condition variable
+                // to every cell's data struct might be too much for this example.
+                // However, since it's an HPX thread, we should yield.
+                l.unlock();
+                hpx::this_thread::yield();
+                l.lock();
+            }
             return u[t][x].u_value;
+        }
+
+        u[t][x].started = true;
+    }
+
+    double result = 0;
+    if (t == 0)    //first timestep are initial values
+    {
+        result = std::sin(2. * pi * static_cast<double>(x) * dx);
+    }
+    else
+    {
+        // NOT using ghost zones here... just letting the stencil cross the periodic
+        // boundary.
+        future<double> n1;
+        if (x == 0)
+            n1 = async<wave_action>(here, t - 1, nx - 1);
+        else
+            n1 = async<wave_action>(here, t - 1, x - 1);
+
+        future<double> n2 = async<wave_action>(here, t - 1, x);
+
+        future<double> n3;
+        if (x == (nx - 1))
+            n3 = async<wave_action>(here, t - 1, 0);
+        else
+            n3 = async<wave_action>(here, t - 1, x + 1);
+
+        double u_t_xminus = n1.get();    //get the futures
+        double u_t_x = n2.get();
+        double u_t_xplus = n3.get();
+
+        if (t == 1)    //second time coordinate handled differently
+        {
+            double u_dot = 0;    // initial du/dt(x)
+            result =
+                calculate_u_tplus_x_1st(u_t_xplus, u_t_x, u_t_xminus, u_dot);
+        }
+        else
+        {
+            double u_tminus_x = async<wave_action>(here, t - 2, x).get();
+            result =
+                calculate_u_tplus_x(u_t_xplus, u_t_x, u_t_xminus, u_tminus_x);
         }
     }
 
-    // NOT using ghost zones here... just letting the stencil cross the periodic
-    // boundary.
-    future<double> n1;
-    if (x == 0)
-        n1 = async<wave_action>(here, t - 1, nx - 1);
-    else
-        n1 = async<wave_action>(here, t - 1, x - 1);
-
-    future<double> n2 = async<wave_action>(here, t - 1, x);
-
-    future<double> n3;
-    if (x == (nx - 1))
-        n3 = async<wave_action>(here, t - 1, 0);
-    else
-        n3 = async<wave_action>(here, t - 1, x + 1);
-
-    double u_t_xminus = n1.get();    //get the futures
-    double u_t_x = n2.get();
-    double u_t_xplus = n3.get();
-
-    if (t == 1)    //second time coordinate handled differently
     {
         std::lock_guard<hpx::mutex> l(u[t][x].mtx);
-        double u_dot = 0;    // initial du/dt(x)
-        u[t][x].u_value =
-            calculate_u_tplus_x_1st(u_t_xplus, u_t_x, u_t_xminus, u_dot);
-        return u[t][x].u_value;
+        u[t][x].u_value = result;
+        u[t][x].computed = true;
     }
-    else
-    {
-        double u_tminus_x = async<wave_action>(here, t - 2, x).get();
-        std::lock_guard<hpx::mutex> l(u[t][x].mtx);
-        u[t][x].u_value =
-            calculate_u_tplus_x(u_t_xplus, u_t_x, u_t_xminus, u_tminus_x);
-        return u[t][x].u_value;
-    }
+    return result;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
