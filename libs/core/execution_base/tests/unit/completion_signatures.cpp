@@ -73,6 +73,7 @@ struct test_helper
     struct my_sender
     {
         using is_sender = void;
+        using sender_concept = ex::sender_t;
         using completion_signatures = CompletionSignatures;
     };
 
@@ -220,6 +221,7 @@ template <typename Signatures>
 struct sender_1
 {
     using is_sender = void;
+    using sender_concept = ex::sender_t;
     using completion_signatures = Signatures;
 };
 
@@ -245,6 +247,7 @@ template <typename Signatures>
 struct sender_2
 {
     using is_sender = void;
+    using sender_concept = ex::sender_t;
 };
 
 template <typename Signatures, typename Env = ex::empty_env>
@@ -354,8 +357,8 @@ void test_awaitable_sender1(Signatures&&, Awaiter&&)
     static_assert(ex::is_awaitable_v<awaitable_sender_1<Awaiter>>);
 
     awaitable_sender_1<Awaiter> s;
-    static_assert(!hpx::meta::value<ex::detail::has_completion_signatures<
-                      awaitable_sender_1<Awaiter>>>);
+    static_assert(!hpx::meta::value<
+        ex::detail::has_completion_signatures<awaitable_sender_1<Awaiter>>>);
     static_assert(std::is_same_v<decltype(ex::get_completion_signatures(
                                      s, ex::empty_env{})),
         Signatures>);
