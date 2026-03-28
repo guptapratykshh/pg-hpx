@@ -23,7 +23,6 @@
 #include <type_traits>
 #include <utility>
 
-#if defined(HPX_HAVE_STDEXEC)
 #include <ranges>
 
 // Forward declaration
@@ -32,7 +31,6 @@ namespace hpx::execution::experimental::detail {
         bool IsChunked>
     class thread_pool_bulk_sender;
 }
-#endif
 
 namespace hpx::execution::experimental {
 
@@ -57,7 +55,6 @@ namespace hpx::execution::experimental {
         };
     }    // namespace detail
 
-#if defined(HPX_HAVE_STDEXEC)
     // Forward declarations
     template <typename Policy>
     struct thread_pool_policy_scheduler;
@@ -105,8 +102,6 @@ namespace hpx::execution::experimental {
                     HPX_FORWARD(decltype(f), f)};
         }
     };
-
-#endif
 
     HPX_CXX_CORE_EXPORT template <typename Policy>
     struct thread_pool_policy_scheduler
@@ -318,9 +313,7 @@ namespace hpx::execution::experimental {
         struct sender
         {
             HPX_NO_UNIQUE_ADDRESS std::decay_t<Scheduler> scheduler;
-#if defined(HPX_HAVE_STDEXEC)
             using sender_concept = hpx::execution::experimental::sender_t;
-#endif
             using completion_signatures =
                 hpx::execution::experimental::completion_signatures<
                     hpx::execution::experimental::set_value_t(),
@@ -350,7 +343,6 @@ namespace hpx::execution::experimental {
             {
                 std::decay_t<Scheduler> const& sched;
 
-#if defined(HPX_HAVE_STDEXEC)
                 // query() member function for newer stdexec
                 auto query(stdexec::get_domain_t) const noexcept
                 {
@@ -366,7 +358,6 @@ namespace hpx::execution::experimental {
                 {
                     return sched;
                 }
-#endif
 
                 template <typename CPO>
                     requires(meta::value<
@@ -379,14 +370,12 @@ namespace hpx::execution::experimental {
                     return e.sched;
                 }
 
-#if defined(HPX_HAVE_STDEXEC)
                 // Add domain query to sender environment
                 friend constexpr auto tag_invoke(
                     stdexec::get_domain_t, env const& e) noexcept
                 {
                     return stdexec::get_domain(e.sched);
                 }
-#endif
             };
 
             friend constexpr auto tag_invoke(
@@ -445,7 +434,6 @@ namespace hpx::execution::experimental {
             return policy_;
         }
 
-#if defined(HPX_HAVE_STDEXEC)
         /// Returns the execution domain of this scheduler (following system_context.hpp pattern).
         [[nodiscard]]
         auto query(stdexec::get_domain_t) const noexcept
@@ -453,7 +441,6 @@ namespace hpx::execution::experimental {
         {
             return {};
         }
-#endif
         /// \endcond
 
     private:
@@ -538,7 +525,6 @@ namespace hpx::execution::experimental {
     HPX_CXX_CORE_EXPORT using thread_pool_scheduler =
         thread_pool_policy_scheduler<hpx::launch>;
 
-#if defined(HPX_HAVE_STDEXEC)
     // Add get_domain query to the scheduler (following system_context.hpp pattern)
     template <typename Policy>
     constexpr auto tag_invoke(stdexec::get_domain_t,
@@ -565,12 +551,9 @@ namespace hpx::execution::experimental {
         return typename thread_pool_policy_scheduler<Policy>::template sender<
             thread_pool_policy_scheduler<Policy>>{HPX_MOVE(sched)};
     }
-#endif
 
 }    // namespace hpx::execution::experimental
 
 // Include the full bulk sender definition after the scheduler is fully defined
 // to avoid circular dependency issues
-#if defined(HPX_HAVE_STDEXEC)
 #include <hpx/executors/thread_pool_scheduler_bulk.hpp>
-#endif
