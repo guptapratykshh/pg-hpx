@@ -128,6 +128,7 @@ namespace hpx {
 #include <cstdint>
 #include <exception>
 #include <iterator>
+#include <list>
 #include <type_traits>
 #include <utility>
 
@@ -400,7 +401,18 @@ namespace hpx::parallel {
                 }
 
                 return hpx::dataflow(
-                    [last](Iter /* left */, Iter /* right */) -> Iter {
+                    [last](hpx::future<Iter>&& leftf,
+                        hpx::future<Iter>&& rightf) -> Iter {
+                        if (leftf.has_exception() || rightf.has_exception())
+                        {
+                            std::list<std::exception_ptr> errors;
+                            if (leftf.has_exception())
+                                errors.push_back(leftf.get_exception_ptr());
+                            if (rightf.has_exception())
+                                errors.push_back(rightf.get_exception_ptr());
+
+                            throw exception_list(HPX_MOVE(errors));
+                        }
                         return last;
                     },
                     HPX_MOVE(left), HPX_MOVE(right));

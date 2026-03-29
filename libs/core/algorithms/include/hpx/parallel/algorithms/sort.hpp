@@ -171,6 +171,7 @@ namespace hpx {
 #include <cstddef>
 #include <exception>
 #include <iterator>
+#include <list>
 #include <type_traits>
 #include <utility>
 
@@ -249,7 +250,18 @@ namespace hpx::parallel {
                 policy, c_first, last, comp, chunk_size);
 
             return hpx::dataflow(
-                [last](RandomIt /* left */, RandomIt /* right */) -> RandomIt {
+                [last](hpx::future<RandomIt>&& leftf,
+                    hpx::future<RandomIt>&& rightf) -> RandomIt {
+                    if (leftf.has_exception() || rightf.has_exception())
+                    {
+                        std::list<std::exception_ptr> errors;
+                        if (leftf.has_exception())
+                            errors.push_back(leftf.get_exception_ptr());
+                        if (rightf.has_exception())
+                            errors.push_back(rightf.get_exception_ptr());
+
+                        throw exception_list(HPX_MOVE(errors));
+                    }
                     return last;
                 },
                 HPX_MOVE(left), HPX_MOVE(right));
