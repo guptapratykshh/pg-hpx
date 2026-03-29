@@ -198,15 +198,12 @@ int main()
 
     // connect awaitable
     {
-        static_assert(std::is_same_v<decltype(ex::connect_awaitable(
-                                         awaitable_sender_1<awaiter>{},
-                                         recv_set_value{})),
-            ex::operation_t<recv_set_value>>);
-
-        static_assert(
-            std::is_same_v<decltype(ex::connect(awaitable_sender_1<awaiter>{},
-                               recv_set_value{})),
-                ex::operation_t<recv_set_value>>);
+        // Verify that connect_awaitable and connect return the same operation state type
+        static_assert(std::is_same_v<
+            decltype(ex::connect_awaitable(
+                awaitable_sender_1<awaiter>{}, recv_set_value{})),
+            decltype(ex::connect(
+                awaitable_sender_1<awaiter>{}, recv_set_value{}))>);
     }
 
     // Promise env
@@ -249,15 +246,18 @@ int main()
 
     // Operation base
     {
-        static_assert(
-            ex::is_operation_state_v<ex::operation_t<recv_set_value>>);
+        using operation_type = decltype(ex::connect(
+            awaitable_sender_1<awaiter>{}, recv_set_value{}));
+        static_assert(ex::is_operation_state_v<operation_type>);
     }
 
     // Connect result type
     {
+        using operation_type = decltype(ex::connect(
+            awaitable_sender_1<awaiter>{}, recv_set_value{}));
         static_assert(std::is_same_v<
             ex::connect_result_t<awaitable_sender_1<awaiter>, recv_set_value>,
-            ex::operation_t<recv_set_value>>);
+            operation_type>);
     }
 
     // As awaitable
