@@ -75,6 +75,11 @@ struct test_helper
         using is_sender = void;
         using sender_concept = ex::sender_t;
         using completion_signatures = CompletionSignatures;
+
+        constexpr ex::empty_env get_env() const noexcept
+        {
+            return {};
+        }
     };
 
     using value_types = typename ex::value_types_of_t<my_sender, ex::empty_env,
@@ -223,6 +228,11 @@ struct sender_1
     using is_sender = void;
     using sender_concept = ex::sender_t;
     using completion_signatures = Signatures;
+
+    constexpr ex::empty_env get_env() const noexcept
+    {
+        return {};
+    }
 };
 
 template <typename Signatures>
@@ -248,6 +258,11 @@ struct sender_2
 {
     using is_sender = void;
     using sender_concept = ex::sender_t;
+
+    constexpr ex::empty_env get_env() const noexcept
+    {
+        return {};
+    }
 };
 
 template <typename Signatures, typename Env = ex::empty_env>
@@ -338,6 +353,11 @@ template <typename Awaiter>
 struct awaitable_sender_1
 {
     Awaiter operator co_await();
+
+    constexpr ex::empty_env get_env() const noexcept
+    {
+        return {};
+    }
 };
 
 struct awaitable_sender_2
