@@ -53,7 +53,7 @@ jobs:
           tests.examples.transpose.transpose_block_numa|\
           tests.performance.local.wait_all_timings|\
           tests.regressions.components.distributed.tcp.bulk_new_3054|\
-          tests.regressions.dynamic_counters_loaded_1508|\
+          tests.regressions.dynamic_counters_loaded_1508|\ 
           tests.regressions.lcos.wait_all_hang_1946|\
           tests.regressions.modules.async_combinators.wait_all_hang_1946|\
           tests.regressions.modules.collectives.distributed.tcp.broadcast_apply|\
