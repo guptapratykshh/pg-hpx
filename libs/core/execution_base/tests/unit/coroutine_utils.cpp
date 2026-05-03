@@ -177,46 +177,6 @@ int main()
 {
     namespace ex = hpx::execution::experimental;
 
-    // clang-format off
-#if !defined(HPX_HAVE_STDEXEC)
-    {
-        // clang-format off
-        static_assert(
-            std::is_same_v<ex::single_sender_value_t<non_awaitable_sender<decltype(
-                               signature_all(std::exception_ptr(), int()))>>,
-                int>);
-        static_assert(
-            std::is_same_v<ex::single_sender_value_t<non_awaitable_sender<decltype(
-                               signature_all(std::exception_ptr()))>>,
-                void>);
-        // clang-format on
-    }
-#endif
-    // clang-format on
-
-    // single sender value
-#if !defined(HPX_HAVE_STDEXEC)
-    {
-        static_assert(std::is_same_v<
-            ex::single_sender_value_t<awaitable_sender_1<awaiter>>, bool>);
-        static_assert(std::is_same_v<
-            ex::single_sender_value_t<awaitable_sender_1<hpx::suspend_always>>,
-            void>);
-    }
-#endif
-
-    // connect awaitable
-#if !defined(HPX_HAVE_STDEXEC)
-    {
-        // Verify that connect_awaitable and connect return the same operation state type
-        static_assert(std::is_same_v<decltype(ex::connect_awaitable(
-                                         awaitable_sender_1<awaiter>{},
-                                         recv_set_value{})),
-            decltype(ex::connect(
-                awaitable_sender_1<awaiter>{}, recv_set_value{}))>);
-    }
-#endif
-
     // Promise env
     {
         static_assert(ex::is_awaiter_v<awaiter>);
@@ -255,25 +215,13 @@ int main()
             awaiter>);
     }
 
-    // Operation base
-#if !defined(HPX_HAVE_STDEXEC)
-    {
-        using operation_type = decltype(ex::connect(
-            awaitable_sender_1<awaiter>{}, recv_set_value{}));
-        static_assert(ex::is_operation_state_v<operation_type>);
-    }
-#endif
-
-    // Connect result type
-#if !defined(HPX_HAVE_STDEXEC)
-    {
-        using operation_type = decltype(ex::connect(
-            awaitable_sender_1<awaiter>{}, recv_set_value{}));
-        static_assert(std::is_same_v<
-            ex::connect_result_t<awaitable_sender_1<awaiter>, recv_set_value>,
-            operation_type>);
-    }
-#endif
+    // Note: tests for `single_sender_value_t<non_awaitable_sender<...>>`,
+    // `single_sender_value_t<awaitable_sender_1<...>>`, `connect_awaitable`
+    // and `connect_result_t<awaitable_sender_1, ...>` were removed in the
+    // post-stdexec cleanup. Under stdexec, awaitables are not standalone
+    // senders outside a coroutine context (they require
+    // `with_awaitable_senders`), so those tests relied on HPX's removed
+    // awaitable-as-sender path and are no longer applicable.
 
     // As awaitable
     {

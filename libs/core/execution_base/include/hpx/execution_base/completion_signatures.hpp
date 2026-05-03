@@ -106,21 +106,6 @@ namespace hpx::execution::experimental {
 
     }    // namespace detail
 
-    namespace detail {
-
-        HPX_CXX_CORE_EXPORT template <typename Sender, typename Enable = void>
-        struct has_completion_signatures : std::false_type
-        {
-        };
-
-        HPX_CXX_CORE_EXPORT template <typename Sender>
-        struct has_completion_signatures<Sender,
-            std::void_t<
-                typename remove_cv_ref_t<Sender>::completion_signatures>>
-          : std::true_type
-        {
-        };
-    }    // namespace detail
     // A sender is a type that is describing an asynchronous operation. The
     // operation itself might not have started yet. In order to get the result
     // of this asynchronous operation, a sender needs to be connected to a
