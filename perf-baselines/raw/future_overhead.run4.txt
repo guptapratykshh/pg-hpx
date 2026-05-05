@@ -1,0 +1,6 @@
+Results:
+
+name: future overhead - create_thread_hierarchical - latch
+executor: no-executor
+average: 4.2444166999999998e-02
+

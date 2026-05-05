@@ -1,0 +1,22 @@
+----------------Parameters---------------------
+Vector size                       :     1000
+Number of tests                   :      100
+Delay per iteration (nanoseconds) :        1
+Display time in                   : Seconds
+-------------Average-(for)---------------------
+Average execution time (unrolled) : 4.7012e-05
+Average execution time (iter)     : 4.8187e-05
+-------------Average-(for_each)----------------
+Average parallel execution time   : 1.5957e-05
+Average task execution time       : 2.1305e-05
+Average sequential execution time : 4.2682e-05
+-----Execution Time Difference-(for_each)------
+Parallel Scale                    :  2.67481
+Task Scale                        :  2.00338
+-------------Average-(for_loop)----------------
+Average parallel execution time   : 1.3145e-05
+Average task execution time       : 1.4626e-05
+Average sequential execution time : 4.2001e-05
+-----Execution Time Difference-(for_loop)------
+Parallel Scale                    :  3.19521
+Task Scale                        :  2.87167

@@ -1,0 +1,6 @@
+Elapsed sequential time: 0.000140083 [s], (1.0944e-06 [s])
+<DartMeasurement name="AsyncSequential" type="numeric/double">0.000001</DartMeasurement>
+Elapsed hierarchical time: 0.00018375 [s], (1.43555e-06 [s])
+<DartMeasurement name="AsyncHierarchical" type="numeric/double">0.000001</DartMeasurement>
+Ratio (speedup): 0.762356
+<DartMeasurement name="AsyncSpeedup" type="numeric/double">0.762356</DartMeasurement>
