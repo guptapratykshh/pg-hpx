@@ -1562,7 +1562,8 @@ if(HPX_WITH_EXAMPLES_QTHREADS)
 endif()
 
 hpx_option(
-  HPX_WITH_EXAMPLES_TASKBENCH BOOL
+  HPX_WITH_EXAMPLES_TASKBENCH
+  BOOL
   "Enable the task-bench example (fetched from upstream StanfordLegion/task-bench, default: OFF)."
   OFF
   CATEGORY "Build Targets"
