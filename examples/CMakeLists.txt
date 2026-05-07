@@ -24,7 +24,6 @@ set(subdirs
     random_mem_access
     spell_check
     startup_shutdown
-    task_bench
     throttle
     tuplespace
     transpose
@@ -32,6 +31,10 @@ set(subdirs
 
 if(HPX_WITH_ITTNOTIFY)
   set(subdirs ${subdirs} itt_notify)
+endif()
+
+if(HPX_WITH_EXAMPLES_TASKBENCH)
+  set(subdirs ${subdirs} task_bench)
 endif()
 
 if(HPX_WITH_EXAMPLES_HDF5)
