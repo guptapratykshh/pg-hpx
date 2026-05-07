@@ -8,7 +8,7 @@
 # (https://github.com/StanfordLegion/task-bench) as an external dependency. No
 # task-bench source files are vendored here.
 
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.18)
 
 # task-bench core uses POSIX APIs (clock_gettime, etc.) that are not available
 # on Windows. Skip the entire example on MSVC builds.
