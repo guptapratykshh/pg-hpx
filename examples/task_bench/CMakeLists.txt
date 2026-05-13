@@ -11,8 +11,8 @@
 cmake_minimum_required(VERSION 3.18)
 
 # task-bench core uses POSIX APIs (clock_gettime, etc.) that are not available
-# on Windows. Skip the entire example on MSVC builds.
-if(MSVC)
+# on Windows. Skip the entire example on Windows builds (MSVC and MinGW).
+if(WIN32)
   return()
 endif()
 
