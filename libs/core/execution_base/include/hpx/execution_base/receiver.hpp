@@ -15,13 +15,18 @@
 namespace hpx::execution::experimental {
 
     template <typename Receiver>
-    using is_receiver = std::bool_constant<receiver<Receiver>>;
+    struct is_receiver : std::bool_constant<receiver<Receiver>>
+    {
+    };
 
     HPX_CXX_CORE_EXPORT template <typename Receiver>
     inline constexpr bool is_receiver_v = is_receiver<Receiver>::value;
 
     template <typename Receiver, typename Completions>
-    using is_receiver_of = std::bool_constant<receiver_of<Receiver, Completions>>;
+    struct is_receiver_of
+      : std::bool_constant<receiver_of<Receiver, Completions>>
+    {
+    };
 
     HPX_CXX_CORE_EXPORT template <typename Receiver, typename Completions>
     inline constexpr bool is_receiver_of_v =
@@ -30,8 +35,15 @@ namespace hpx::execution::experimental {
     namespace detail {
 
         template <typename CPO>
-        inline constexpr bool is_receiver_cpo_v = std::is_same_v<CPO, set_value_t> ||
-            std::is_same_v<CPO, set_error_t> || std::is_same_v<CPO, set_stopped_t>;
+        struct is_receiver_cpo
+          : std::bool_constant<std::is_same_v<CPO, set_value_t> ||
+                std::is_same_v<CPO, set_error_t> ||
+                std::is_same_v<CPO, set_stopped_t>>
+        {
+        };
+
+        template <typename CPO>
+        inline constexpr bool is_receiver_cpo_v = is_receiver_cpo<CPO>::value;
     }    // namespace detail
 
 }    // namespace hpx::execution::experimental
