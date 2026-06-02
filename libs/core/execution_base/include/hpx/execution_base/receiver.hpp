@@ -14,19 +14,14 @@
 
 namespace hpx::execution::experimental {
 
-    HPX_CXX_CORE_EXPORT template <typename Receiver>
-    struct is_receiver : std::bool_constant<receiver<Receiver>>
-    {
-    };
+    template <typename Receiver>
+    using is_receiver = std::bool_constant<receiver<Receiver>>;
 
     HPX_CXX_CORE_EXPORT template <typename Receiver>
     inline constexpr bool is_receiver_v = is_receiver<Receiver>::value;
 
-    HPX_CXX_CORE_EXPORT template <typename Receiver, typename Completions>
-    struct is_receiver_of
-      : std::bool_constant<receiver_of<Receiver, Completions>>
-    {
-    };
+    template <typename Receiver, typename Completions>
+    using is_receiver_of = std::bool_constant<receiver_of<Receiver, Completions>>;
 
     HPX_CXX_CORE_EXPORT template <typename Receiver, typename Completions>
     inline constexpr bool is_receiver_of_v =
@@ -34,17 +29,9 @@ namespace hpx::execution::experimental {
 
     namespace detail {
 
-        // What about this implementation instead of using template specialization?
-        HPX_CXX_CORE_EXPORT template <typename CPO>
-        struct is_receiver_cpo
-          : std::bool_constant<std::is_same_v<CPO, set_value_t> ||
-                std::is_same_v<CPO, set_error_t> ||
-                std::is_same_v<CPO, set_stopped_t>>
-        {
-        };
-
-        HPX_CXX_CORE_EXPORT template <typename CPO>
-        inline constexpr bool is_receiver_cpo_v = is_receiver_cpo<CPO>::value;
+        template <typename CPO>
+        inline constexpr bool is_receiver_cpo_v = std::is_same_v<CPO, set_value_t> ||
+            std::is_same_v<CPO, set_error_t> || std::is_same_v<CPO, set_stopped_t>;
     }    // namespace detail
 
 }    // namespace hpx::execution::experimental

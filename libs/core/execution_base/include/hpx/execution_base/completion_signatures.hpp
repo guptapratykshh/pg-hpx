@@ -39,72 +39,9 @@ namespace hpx::execution::experimental {
         empty_variant() = delete;
     };
 
-    namespace detail {
-
-        // use this remove_cv_ref instead of std::decay to avoid
-        // decaying function types, e.g. set_value_t() -> set_value_t(*)()
-        HPX_CXX_CORE_EXPORT template <typename T>
-        struct remove_cv_ref
-        {
-            using type = std::remove_cv_t<std::remove_reference_t<T>>;
-        };
-
-        HPX_CXX_CORE_EXPORT template <typename T>
-        using remove_cv_ref_t = meta::type<remove_cv_ref<T>>;
-
-        // clang-format off
-
-        // If sizeof...(Ts) is greater than zero, variant-or-empty<Ts...> names
-        // the type variant<Us...> where Us... is the pack decay_t<Ts>... with
-        // duplicate types removed.
-        HPX_CXX_CORE_EXPORT template <template <typename...> typename Variant>
-        struct decay_variant_or_empty
-        {
-            template <typename... Ts>
-            using apply = meta::invoke<
-                meta::if_<meta::bool_<sizeof...(Ts) != 0>,
-                    meta::transform<
-                        meta::func1<remove_cv_ref_t>,
-                        meta::unique<meta::func<Variant>>>,
-                    meta::constant<empty_variant>>,
-                Ts...>;
-        };
-
-        HPX_CXX_CORE_EXPORT template <template <typename...> typename Variant>
-        struct decay_variant
-        {
-            template <typename... Ts>
-            using apply = meta::invoke<
-                meta::transform<
-                    meta::func1<remove_cv_ref_t>,
-                    meta::unique<meta::func<Variant>>>,
-                Ts...>;
-        };
-
-        HPX_CXX_CORE_EXPORT template <template <typename...> typename Variant>
-        struct unique_variant
-        {
-            template <typename... Ts>
-            using apply =
-                meta::invoke<meta::unique<meta::func<Variant>>, Ts...>;
-        };
-        // clang-format on
-
-        HPX_CXX_CORE_EXPORT template <typename... Ts>
-        using decayed_variant =
-            meta::invoke<decay_variant_or_empty<hpx::variant>, Ts...>;
-
-        HPX_CXX_CORE_EXPORT template <template <typename...> typename Tuple>
-        struct decay_tuple
-        {
-            template <typename... Ts>
-            using apply = Tuple<remove_cv_ref_t<Ts>...>;
-        };
-
-        HPX_CXX_CORE_EXPORT template <typename... Ts>
-        using decayed_tuple = meta::invoke<decay_tuple<hpx::tuple>, Ts...>;
-
-    }    // namespace detail
+    // Compatibility alias retained for existing bulk sender code.
+    template <typename... Ts>
+    using decayed_tuple = stdexec::__decayed_tuple<Ts...>;
 
     // A sender is a type that is describing an asynchronous operation. The
     // operation itself might not have started yet. In order to get the result
@@ -165,45 +102,10 @@ namespace hpx::execution::experimental {
     inline constexpr bool is_sender_of_v =
         is_sender_of<Sender, Signal, Env>::value;
 
-    // As outlined in the original implementation:
-    //
-    // Alias template single-sender-value-type is defined as follows:
-    //
-    // 1. If value_types_of_t<S, E, Tuple, Variant> would have the form
-    // Variant<Tuple<T>>, then single-sender-value-type<S, E> is an alias for
-    // type T.
-    // 2. Otherwise, if value_types_of_t<S, E, Tuple, Variant> would
-    // have the form Variant<Tuple<>> or Variant<>, then
-    // single-sender-value-type<S, E> is an alias for type void.
-    // 3. Otherwise, single-sender-value-type<S, E> is ill-formed.
-    //
-    namespace detail {
-        template <typename ValueTypes>
-        struct single_sender_value;
-
-        template <>
-        struct single_sender_value<hpx::variant<>>
-        {
-            using type = void;
-        };
-
-        template <>
-        struct single_sender_value<hpx::variant<hpx::tuple<>>>
-        {
-            using type = void;
-        };
-
-        template <typename T>
-        struct single_sender_value<hpx::variant<hpx::tuple<T>>>
-        {
-            using type = T;
-        };
-    }    // namespace detail
-
     template <typename Sender,
         typename Env = hpx::execution::experimental::empty_env>
-    using single_sender_value_t = typename detail::single_sender_value<
-        value_types_of_t<Sender, Env, hpx::tuple, hpx::variant>>::type;
+    using single_sender_value_t = stdexec::__single_sender_value_t<
+        value_types_of_t<Sender, Env, hpx::tuple, hpx::variant>>;
 
     HPX_CXX_CORE_EXPORT template <typename A, typename B>
     inline constexpr bool is_derived_from_v = std::derived_from<A, B>;
