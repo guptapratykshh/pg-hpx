@@ -27,6 +27,8 @@
 #include <type_traits>
 #include <utility>
 
+namespace tt = hpx::this_thread::experimental;
+
 ///////////////////////////////////////////////////////////////////////////////
 // Test 1: future<int> -> future_sender -> stdexec::then(x*2) -> sync_wait
 void test_future_to_sender()
@@ -34,7 +36,7 @@ void test_future_to_sender()
     hpx::future<int> f = hpx::async([]() -> int { return 42; });
 
     auto snd = hpx::execution::experimental::future_sender<int>{std::move(f)};
-    auto result = hpx::execution::experimental::sync_wait(std::move(snd) |
+    auto result = tt::sync_wait(std::move(snd) |
         hpx::execution::experimental::then([](int x) { return x * 2; }));
 
     HPX_TEST(result.has_value());
@@ -73,7 +75,7 @@ void test_error_propagation()
     {
         auto snd =
             hpx::execution::experimental::future_sender<int>{std::move(f)};
-        auto result = hpx::execution::experimental::sync_wait(std::move(snd) |
+        auto result = tt::sync_wait(std::move(snd) |
             hpx::execution::experimental::then([](int) { return 0; }));
         // If we get here with a valid result, that's wrong
         if (!result.has_value())
@@ -113,7 +115,7 @@ void test_move_only_semantics()
         hpx::execution::experimental::future_sender<int>{std::move(f)};
     sender_type s2 = std::move(s1);    // move construct - must compile
 
-    auto result = hpx::execution::experimental::sync_wait(std::move(s2) |
+    auto result = tt::sync_wait(std::move(s2) |
         hpx::execution::experimental::then([](int x) { return x * 3; }));
 
     HPX_TEST(result.has_value());
