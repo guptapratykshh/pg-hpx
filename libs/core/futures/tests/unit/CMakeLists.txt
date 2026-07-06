@@ -28,6 +28,13 @@ set(future_PARAMETERS THREADS_PER_LOCALITY 4)
 set(future_sender_test_PARAMETERS THREADS_PER_LOCALITY 4)
 set(future_then_PARAMETERS THREADS_PER_LOCALITY 4)
 
+if(HPX_WITH_CXX_MODULES AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    future_sender_test.cpp PROPERTIES COMPILE_FLAGS
+                                      "-fno-cxx-modules -fno-modules-ts"
+  )
+endif()
+
 foreach(test ${tests})
   set(sources ${test}.cpp)
 
