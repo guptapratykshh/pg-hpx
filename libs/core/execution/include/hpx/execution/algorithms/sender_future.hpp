@@ -20,10 +20,8 @@
 #pragma once
 
 #include <hpx/config.hpp>
-// clang-format off
-#include <hpx/futures/promise.hpp>
 #include <hpx/futures/future.hpp>
-// clang-format on
+#include <hpx/futures/promise.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution_base.hpp>
 
@@ -170,33 +168,35 @@ namespace hpx::execution::experimental {
     //
     // STANDARD 4: This header does NOT include executor_scheduler.hpp,
     // parallel_executor.hpp, or any execution algorithm detail headers.
-    template <typename T, typename Sender,
-        typename = std::enable_if_t<
-            hpx::execution::experimental::is_sender_v<std::decay_t<Sender>>>>
-    hpx::future<T> as_future(Sender&& sender)
+    template <typename T>
+    struct as_future_t final
     {
-        using receiver_type = detail::sender_future_receiver<T>;
-        using holder_type = detail::op_state_holder<Sender, receiver_type>;
+        template <typename Sender,
+            typename = std::enable_if_t<hpx::execution::experimental::
+                    is_sender_v<std::decay_t<Sender>>>>
+        constexpr HPX_FORCEINLINE hpx::future<T> operator()(
+            Sender&& sender) const
+        {
+            using receiver_type = detail::sender_future_receiver<T>;
+            using holder_type = detail::op_state_holder<Sender, receiver_type>;
 
-        // Build promise + future pair
-        hpx::promise<T> p;
-        hpx::future<T> fut = p.get_future();
+            hpx::promise<T> p;
+            hpx::future<T> fut = p.get_future();
 
-        // Connect sender to receiver; heap-allocate to keep op_state pinned.
-        // The op_state is constructed in-place inside the holder.
-        auto holder_ptr = std::make_unique<holder_type>(
-            HPX_FORWARD(Sender, sender), receiver_type{HPX_MOVE(p)});
+            auto holder_ptr = std::make_unique<holder_type>(
+                HPX_FORWARD(Sender, sender), receiver_type{HPX_MOVE(p)});
 
-        // start() is noexcept per P2300 6.9.7
-        holder_ptr->start();
+            holder_ptr->start();
 
-        // Keep holder alive through the future's continuation; the holder
-        // destructs only after the future value has been read.
-        return fut.then([holder = HPX_MOVE(holder_ptr)](
-                            hpx::future<T> f) mutable -> decltype(auto) {
-            holder.reset();
-            return f.get();
-        });
-    }
+            return fut.then([holder = HPX_MOVE(holder_ptr)](
+                                hpx::future<T> f) mutable -> decltype(auto) {
+                holder.reset();
+                return f.get();
+            });
+        }
+    };
+
+    template <typename T>
+    inline constexpr as_future_t<T> as_future{};
 
 }    // namespace hpx::execution::experimental

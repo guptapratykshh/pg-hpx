@@ -16,9 +16,10 @@
 ///   4. move_only_semantics: future_sender cannot be copied
 
 #include <hpx/execution.hpp>
+#include <hpx/execution/algorithms/future_sender.hpp>
+#include <hpx/execution/algorithms/sender_future.hpp>
 #include <hpx/future.hpp>
 #include <hpx/init.hpp>
-#include <hpx/modules/futures.hpp>
 #include <hpx/modules/testing.hpp>
 
 #include <exception>
@@ -35,7 +36,7 @@ void test_future_to_sender()
 {
     hpx::future<int> f = hpx::async([]() -> int { return 42; });
 
-    auto snd = hpx::execution::experimental::future_sender<int>{std::move(f)};
+    auto snd = hpx::execution::experimental::future_sender<hpx::future<int>>{std::move(f)};
     auto result = tt::sync_wait(std::move(snd) |
         hpx::execution::experimental::then([](int x) { return x * 2; }));
 
@@ -74,7 +75,7 @@ void test_error_propagation()
     try
     {
         auto snd =
-            hpx::execution::experimental::future_sender<int>{std::move(f)};
+            hpx::execution::experimental::future_sender<hpx::future<int>>{std::move(f)};
         auto result = tt::sync_wait(std::move(snd) |
             hpx::execution::experimental::then([](int) { return 0; }));
         // If we get here with a valid result, that's wrong
@@ -99,7 +100,7 @@ void test_error_propagation()
 // Test 4: future_sender<T> must be move-only (not copyable)
 void test_move_only_semantics()
 {
-    using sender_type = hpx::execution::experimental::future_sender<int>;
+    using sender_type = hpx::execution::experimental::future_sender<hpx::future<int>>;
 
     // Verify copy operations are deleted
     HPX_TEST(!std::is_copy_constructible_v<sender_type>);
@@ -112,7 +113,7 @@ void test_move_only_semantics()
     // Actually move a sender and use it
     hpx::future<int> f = hpx::make_ready_future(10);
     sender_type s1 =
-        hpx::execution::experimental::future_sender<int>{std::move(f)};
+        hpx::execution::experimental::future_sender<hpx::future<int>>{std::move(f)};
     sender_type s2 = std::move(s1);    // move construct - must compile
 
     auto result = tt::sync_wait(std::move(s2) |

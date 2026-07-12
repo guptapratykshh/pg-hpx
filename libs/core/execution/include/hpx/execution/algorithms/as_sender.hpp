@@ -9,6 +9,7 @@
 
 #include <hpx/assert.hpp>
 #include <hpx/execution/algorithms/detail/partial_algorithm.hpp>
+#include <hpx/execution/algorithms/future_sender.hpp>
 #include <hpx/modules/concepts.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution_base.hpp>
@@ -146,93 +147,6 @@ namespace hpx::execution::experimental { namespace detail {
                 hpx::execution::experimental::set_error_t(std::exception_ptr)>;
     };
 
-    HPX_CXX_CORE_EXPORT template <typename Future>
-    struct as_sender_sender;
-
-    template <typename T>
-    struct as_sender_sender<hpx::future<T>>
-      : public as_sender_sender_base<hpx::future<T>>
-    {
-        using sender_concept = hpx::execution::experimental::sender_t;
-        using future_type = hpx::future<T>;
-        using base_type = as_sender_sender_base<hpx::future<T>>;
-        using base_type::future_;
-
-        template <typename Future>
-            requires(!std::is_same_v<std::decay_t<Future>, as_sender_sender>)
-        explicit as_sender_sender(Future&& future)
-          : base_type{HPX_FORWARD(Future, future)}
-        {
-        }
-
-        as_sender_sender(as_sender_sender&&) = default;
-        as_sender_sender& operator=(as_sender_sender&&) = default;
-        as_sender_sender(as_sender_sender const&) = delete;
-        as_sender_sender& operator=(as_sender_sender const&) = delete;
-
-        template <typename Self, typename... Env>
-        static consteval auto get_completion_signatures() noexcept ->
-            typename base_type::completion_signatures
-        {
-            return {};
-        }
-
-        template <typename Receiver>
-        auto connect(Receiver&& receiver) &&
-        {
-            return as_sender_operation_state<Receiver, future_type>{
-                HPX_FORWARD(Receiver, receiver), HPX_MOVE(future_)};
-        }
-    };
-}}    // namespace hpx::execution::experimental::detail
-
-namespace hpx::execution::experimental { namespace detail {
-    template <typename T>
-    struct as_sender_sender<hpx::shared_future<T>>
-      : as_sender_sender_base<hpx::shared_future<T>>
-    {
-        using sender_concept = hpx::execution::experimental::sender_t;
-        using future_type = hpx::shared_future<T>;
-        using base_type = as_sender_sender_base<hpx::shared_future<T>>;
-        using base_type::future_;
-
-        template <typename Future>
-            requires(!std::is_same_v<std::decay_t<Future>, as_sender_sender>)
-        explicit as_sender_sender(Future&& future)
-          : base_type{HPX_FORWARD(Future, future)}
-        {
-        }
-
-        as_sender_sender(as_sender_sender&&) = default;
-        as_sender_sender& operator=(as_sender_sender&&) = default;
-        as_sender_sender(as_sender_sender const&) = default;
-        as_sender_sender& operator=(as_sender_sender const&) = default;
-
-        template <typename Self, typename... Env>
-        static consteval auto get_completion_signatures() noexcept ->
-            typename base_type::completion_signatures
-        {
-            return {};
-        }
-
-        template <typename Receiver>
-        auto connect(Receiver&& receiver) &&
-        {
-            return as_sender_operation_state<Receiver, future_type>{
-                HPX_FORWARD(Receiver, receiver), HPX_MOVE(future_)};
-        }
-
-        template <typename Receiver>
-        auto connect(Receiver&& receiver) &
-        {
-            return as_sender_operation_state<Receiver, future_type>{
-                HPX_FORWARD(Receiver, receiver), future_};
-        }
-    };
-}}    // namespace hpx::execution::experimental::detail
-
-namespace hpx::execution::experimental { namespace detail {
-
     ///////////////////////////////////////////////////////////////////////
     // Scheduler-aware sender wrapper.
     //
@@ -343,8 +257,8 @@ namespace hpx::execution::experimental {
         // clang-format on
         constexpr HPX_FORCEINLINE auto operator()(Future&& future) const
         {
-            return detail::as_sender_sender<std::decay_t<Future>>(
-                HPX_FORWARD(Future, future));
+            return hpx::execution::experimental::future_sender<
+                std::decay_t<Future>>{HPX_FORWARD(Future, future)};
         }
 
         // Scheduler-aware overload: wraps the future into a sender whose
