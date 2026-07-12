@@ -52,8 +52,7 @@ namespace hpx::execution::experimental {
             // STANDARD 8: every receiver must define receiver_concept
             using receiver_concept = hpx::execution::experimental::receiver_t;
 
-            explicit sender_future_receiver(
-                std::shared_ptr<hpx::promise<T>> p) noexcept
+            explicit sender_future_receiver(hpx::promise<T> p) noexcept
               : promise_(HPX_MOVE(p))
             {
             }
@@ -61,9 +60,9 @@ namespace hpx::execution::experimental {
             sender_future_receiver(sender_future_receiver&&) = default;
             sender_future_receiver& operator=(
                 sender_future_receiver&&) = default;
-            sender_future_receiver(sender_future_receiver const&) = default;
+            sender_future_receiver(sender_future_receiver const&) = delete;
             sender_future_receiver& operator=(
-                sender_future_receiver const&) = default;
+                sender_future_receiver const&) = delete;
 
 #if !defined(__NVCC__) && !defined(__CUDACC__)
             ~sender_future_receiver() = default;
@@ -71,26 +70,35 @@ namespace hpx::execution::experimental {
 
             // set_value: forward the value into the promise (STANDARD 3: no
             // move-into-capture UB; capture lambda captures ref to promise_)
-            template <typename U>
-            void set_value(U&& val) && noexcept
+            template <typename... U>
+            void set_value(U&&... val) && noexcept
             {
                 hpx::detail::try_catch_exception_ptr(
-                    [&]() { promise_->set_value(HPX_FORWARD(U, val)); },
+                    [&]() {
+                        if constexpr (std::is_void_v<T>)
+                        {
+                            promise_.set_value();
+                        }
+                        else
+                        {
+                            promise_.set_value(HPX_FORWARD(U, val)...);
+                        }
+                    },
                     [&](std::exception_ptr ep) {
-                        promise_->set_exception(HPX_MOVE(ep));
+                        promise_.set_exception(HPX_MOVE(ep));
                     });
             }
 
             // set_error: store the exception in the promise
             void set_error(std::exception_ptr ep) && noexcept
             {
-                promise_->set_exception(HPX_MOVE(ep));
+                promise_.set_exception(HPX_MOVE(ep));
             }
 
             // set_stopped: convert stopped signal to hpx::thread_interrupted
             void set_stopped() && noexcept
             {
-                promise_->set_exception(
+                promise_.set_exception(
                     std::make_exception_ptr(hpx::thread_interrupted{}));
             }
 
@@ -101,59 +109,7 @@ namespace hpx::execution::experimental {
             }
 
         private:
-            std::shared_ptr<hpx::promise<T>> promise_;
-        };
-
-        // Specialisation for void-valued senders
-        HPX_CXX_CORE_EXPORT template <>
-        struct sender_future_receiver<void>
-        {
-            using receiver_concept = hpx::execution::experimental::receiver_t;
-
-            explicit sender_future_receiver(
-                std::shared_ptr<hpx::promise<void>> p) noexcept
-              : promise_(HPX_MOVE(p))
-            {
-            }
-
-            sender_future_receiver(sender_future_receiver&&) = default;
-            sender_future_receiver& operator=(
-                sender_future_receiver&&) = default;
-            sender_future_receiver(sender_future_receiver const&) = default;
-            sender_future_receiver& operator=(
-                sender_future_receiver const&) = default;
-
-#if !defined(__NVCC__) && !defined(__CUDACC__)
-            ~sender_future_receiver() = default;
-#endif
-
-            void set_value() && noexcept
-            {
-                hpx::detail::try_catch_exception_ptr(
-                    [&]() { promise_->set_value(); },
-                    [&](std::exception_ptr ep) {
-                        promise_->set_exception(HPX_MOVE(ep));
-                    });
-            }
-
-            void set_error(std::exception_ptr ep) && noexcept
-            {
-                promise_->set_exception(HPX_MOVE(ep));
-            }
-
-            void set_stopped() && noexcept
-            {
-                promise_->set_exception(
-                    std::make_exception_ptr(hpx::thread_interrupted{}));
-            }
-
-            hpx::execution::experimental::empty_env get_env() const noexcept
-            {
-                return {};
-            }
-
-        private:
-            std::shared_ptr<hpx::promise<void>> promise_;
+            hpx::promise<T> promise_;
         };
 
         ///////////////////////////////////////////////////////////////////////
@@ -223,21 +179,22 @@ namespace hpx::execution::experimental {
         using holder_type = detail::op_state_holder<Sender, receiver_type>;
 
         // Build promise + future pair
-        auto promise_ptr = std::make_shared<hpx::promise<T>>();
-        hpx::future<T> fut = promise_ptr->get_future();
+        hpx::promise<T> p;
+        hpx::future<T> fut = p.get_future();
 
         // Connect sender to receiver; heap-allocate to keep op_state pinned.
         // The op_state is constructed in-place inside the holder.
-        auto holder_ptr = std::make_shared<holder_type>(
-            HPX_FORWARD(Sender, sender), receiver_type{promise_ptr});
+        auto holder_ptr = std::make_unique<holder_type>(
+            HPX_FORWARD(Sender, sender), receiver_type{HPX_MOVE(p)});
 
         // start() is noexcept per P2300 6.9.7
         holder_ptr->start();
 
         // Keep holder alive through the future's continuation; the holder
         // destructs only after the future value has been read.
-        return fut.then([holder_ptr](hpx::future<T> f) mutable -> T {
-            holder_ptr.reset();
+        return fut.then([holder = HPX_MOVE(holder_ptr)](
+                            hpx::future<T> f) mutable -> decltype(auto) {
+            holder.reset();
             return f.get();
         });
     }

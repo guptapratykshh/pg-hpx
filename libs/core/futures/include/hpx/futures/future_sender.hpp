@@ -117,65 +117,6 @@ namespace hpx::execution::experimental {
         hpx::future<T> future_;
     };
 
-    // Specialisation for future<void>
-    HPX_CXX_CORE_EXPORT template <typename Receiver>
-    class future_sender_operation_state<Receiver, void>
-    {
-    public:
-        using receiver_type = std::decay_t<Receiver>;
-
-        template <typename Receiver_>
-        future_sender_operation_state(Receiver_&& r, hpx::future<void> f)
-          : receiver_(HPX_FORWARD(Receiver_, r))
-          , future_(HPX_MOVE(f))
-        {
-        }
-
-        future_sender_operation_state(
-            future_sender_operation_state const&) = delete;
-        future_sender_operation_state& operator=(
-            future_sender_operation_state const&) = delete;
-        future_sender_operation_state(future_sender_operation_state&&) = delete;
-        future_sender_operation_state& operator=(
-            future_sender_operation_state&&) = delete;
-
-#if !defined(__NVCC__) && !defined(__CUDACC__)
-        ~future_sender_operation_state() = default;
-#endif
-
-        void start() & noexcept
-        {
-            start_helper();
-        }
-
-    private:
-        void start_helper() & noexcept
-        {
-            hpx::detail::try_catch_exception_ptr(
-                [&]() {
-                    future_.then([this](hpx::future<void> f) {
-                        hpx::detail::try_catch_exception_ptr(
-                            [&]() {
-                                f.get();
-                                hpx::execution::experimental::set_value(
-                                    HPX_MOVE(receiver_));
-                            },
-                            [&](std::exception_ptr ep) {
-                                hpx::execution::experimental::set_error(
-                                    HPX_MOVE(receiver_), HPX_MOVE(ep));
-                            });
-                    });
-                },
-                [&](std::exception_ptr ep) {
-                    hpx::execution::experimental::set_error(
-                        HPX_MOVE(receiver_), HPX_MOVE(ep));
-                });
-        }
-
-        receiver_type receiver_;
-        hpx::future<void> future_;
-    };
-
     ///////////////////////////////////////////////////////////////////////////
     // future_sender<T>: a P2300-compliant sender that wraps an hpx::future<T>.
     //
@@ -194,11 +135,15 @@ namespace hpx::execution::experimental {
         using sender_concept = hpx::execution::experimental::sender_t;
 
         // Completion signatures advertised to stdexec concept machinery.
-        using completion_signatures =
+        using completion_signatures = std::conditional_t<std::is_void_v<T>,
+            hpx::execution::experimental::completion_signatures<
+                hpx::execution::experimental::set_value_t(),
+                hpx::execution::experimental::set_error_t(std::exception_ptr),
+                hpx::execution::experimental::set_stopped_t()>,
             hpx::execution::experimental::completion_signatures<
                 hpx::execution::experimental::set_value_t(T),
                 hpx::execution::experimental::set_error_t(std::exception_ptr),
-                hpx::execution::experimental::set_stopped_t()>;
+                hpx::execution::experimental::set_stopped_t()>>;
 
         explicit future_sender(hpx::future<T>&& f) noexcept
           : future_(HPX_MOVE(f))
@@ -234,47 +179,130 @@ namespace hpx::execution::experimental {
         hpx::future<T> future_;
     };
 
-    // Specialisation for future<void>
-    HPX_CXX_CORE_EXPORT template <>
-    struct future_sender<void>
+    HPX_CXX_CORE_EXPORT template <typename Receiver, typename T>
+    class shared_future_sender_operation_state
+    {
+    public:
+        using receiver_type = std::decay_t<Receiver>;
+
+        template <typename Receiver_>
+        shared_future_sender_operation_state(
+            Receiver_&& r, hpx::shared_future<T> f)
+          : receiver_(HPX_FORWARD(Receiver_, r))
+          , future_(HPX_MOVE(f))
+        {
+        }
+
+        shared_future_sender_operation_state(
+            shared_future_sender_operation_state const&) = delete;
+        shared_future_sender_operation_state& operator=(
+            shared_future_sender_operation_state const&) = delete;
+        shared_future_sender_operation_state(
+            shared_future_sender_operation_state&&) = delete;
+        shared_future_sender_operation_state& operator=(
+            shared_future_sender_operation_state&&) = delete;
+
+#if !defined(__NVCC__) && !defined(__CUDACC__)
+        ~shared_future_sender_operation_state() = default;
+#endif
+
+        void start() & noexcept
+        {
+            start_helper();
+        }
+
+    private:
+        void start_helper() & noexcept
+        {
+            hpx::detail::try_catch_exception_ptr(
+                [&]() {
+                    future_.then([this](hpx::shared_future<T> f) {
+                        hpx::detail::try_catch_exception_ptr(
+                            [&]() {
+                                if constexpr (std::is_void_v<T>)
+                                {
+                                    f.get();
+                                    hpx::execution::experimental::set_value(
+                                        HPX_MOVE(receiver_));
+                                }
+                                else
+                                {
+                                    hpx::execution::experimental::set_value(
+                                        HPX_MOVE(receiver_), f.get());
+                                }
+                            },
+                            [&](std::exception_ptr ep) {
+                                hpx::execution::experimental::set_error(
+                                    HPX_MOVE(receiver_), HPX_MOVE(ep));
+                            });
+                    });
+                },
+                [&](std::exception_ptr ep) {
+                    hpx::execution::experimental::set_error(
+                        HPX_MOVE(receiver_), HPX_MOVE(ep));
+                });
+        }
+
+        receiver_type receiver_;
+        hpx::shared_future<T> future_;
+    };
+
+    HPX_CXX_CORE_EXPORT template <typename T>
+    struct shared_future_sender
     {
         using sender_concept = hpx::execution::experimental::sender_t;
 
-        using completion_signatures =
+        using completion_signatures = std::conditional_t<std::is_void_v<T>,
             hpx::execution::experimental::completion_signatures<
                 hpx::execution::experimental::set_value_t(),
                 hpx::execution::experimental::set_error_t(std::exception_ptr),
-                hpx::execution::experimental::set_stopped_t()>;
+                hpx::execution::experimental::set_stopped_t()>,
+            hpx::execution::experimental::completion_signatures<
+                hpx::execution::experimental::set_value_t(T const&),
+                hpx::execution::experimental::set_error_t(std::exception_ptr),
+                hpx::execution::experimental::set_stopped_t()>>;
 
-        explicit future_sender(hpx::future<void>&& f) noexcept
+        explicit shared_future_sender(hpx::shared_future<T> f) noexcept
           : future_(HPX_MOVE(f))
         {
         }
 
-        future_sender(future_sender&&) = default;
-        future_sender& operator=(future_sender&&) = default;
-        future_sender(future_sender const&) = delete;
-        future_sender& operator=(future_sender const&) = delete;
+        shared_future_sender(shared_future_sender&&) = default;
+        shared_future_sender& operator=(shared_future_sender&&) = default;
+        shared_future_sender(shared_future_sender const&) = default;
+        shared_future_sender& operator=(shared_future_sender const&) = default;
 
 #if !defined(__NVCC__) && !defined(__CUDACC__)
-        ~future_sender() = default;
+        ~shared_future_sender() = default;
 #endif
 
         template <typename Env>
         friend auto tag_invoke(
             hpx::execution::experimental::get_completion_signatures_t,
-            future_sender const&, Env&&) -> completion_signatures;
+            shared_future_sender const&, Env&&) -> completion_signatures;
 
         template <typename Receiver>
         friend auto tag_invoke(hpx::execution::experimental::connect_t,
-            future_sender&& self, Receiver&& r)
+            shared_future_sender self, Receiver&& r)
         {
-            return future_sender_operation_state<Receiver, void>{
+            return shared_future_sender_operation_state<Receiver, T>{
                 HPX_FORWARD(Receiver, r), HPX_MOVE(self.future_)};
         }
 
     private:
-        hpx::future<void> future_;
+        hpx::shared_future<T> future_;
     };
+
+    template <typename T>
+    future_sender<T> as_sender(hpx::future<T>&& f)
+    {
+        return future_sender<T>{HPX_MOVE(f)};
+    }
+
+    template <typename T>
+    shared_future_sender<T> as_sender(hpx::shared_future<T> f)
+    {
+        return shared_future_sender<T>{HPX_MOVE(f)};
+    }
 
 }    // namespace hpx::execution::experimental
