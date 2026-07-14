@@ -11,9 +11,9 @@
 /// Usage:
 /// \code
 ///   hpx::future<int> f = hpx::async([]{ return 42; });
-///   auto result = hpx::execution::experimental::future_sender<int>{std::move(f)}
-///       | stdexec::then([](int x){ return x * 2; })
-///       | stdexec::sync_wait();
+///   auto result = hpx::execution::experimental::future_sender<hpx::future<int>>{std::move(f)}
+///       | hpx::execution::experimental::then([](int x){ return x * 2; })
+///       | hpx::execution::experimental::sync_wait();
 /// \endcode
 
 #pragma once
@@ -66,26 +66,33 @@ namespace hpx::execution::experimental {
     private:
         void start_helper() & noexcept
         {
-            future_.then([this](future_type f) {
-                hpx::detail::try_catch_exception_ptr(
-                    [&]() {
-                        if constexpr (std::is_void_v<result_type>)
-                        {
-                            f.get();
-                            hpx::execution::experimental::set_value(
-                                HPX_MOVE(receiver_));
-                        }
-                        else
-                        {
-                            hpx::execution::experimental::set_value(
-                                HPX_MOVE(receiver_), f.get());
-                        }
-                    },
-                    [&](std::exception_ptr ep) {
-                        hpx::execution::experimental::set_error(
-                            HPX_MOVE(receiver_), HPX_MOVE(ep));
+            hpx::detail::try_catch_exception_ptr(
+                [&]() {
+                    future_.then([this](future_type f) {
+                        hpx::detail::try_catch_exception_ptr(
+                            [&]() {
+                                if constexpr (std::is_void_v<result_type>)
+                                {
+                                    f.get();
+                                    hpx::execution::experimental::set_value(
+                                        HPX_MOVE(receiver_));
+                                }
+                                else
+                                {
+                                    hpx::execution::experimental::set_value(
+                                        HPX_MOVE(receiver_), f.get());
+                                }
+                            },
+                            [&](std::exception_ptr ep) {
+                                hpx::execution::experimental::set_error(
+                                    HPX_MOVE(receiver_), HPX_MOVE(ep));
+                            });
                     });
-            });
+                },
+                [&](std::exception_ptr ep) {
+                    hpx::execution::experimental::set_error(
+                        HPX_MOVE(receiver_), HPX_MOVE(ep));
+                });
         }
 
         receiver_type receiver_;
