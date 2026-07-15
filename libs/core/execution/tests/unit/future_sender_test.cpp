@@ -13,11 +13,9 @@
 ///   2. sender_to_future:    stdexec::just | stdexec::then -> as_future()
 ///                           -> .get()
 ///   3. error_propagation:   future holding exception -> sender error channel
-///   4. move_only_semantics: future_sender cannot be copied
+///   4. move_only_semantics: as_sender(future) remains move-only
 
 #include <hpx/execution.hpp>
-#include <hpx/execution/algorithms/future_sender.hpp>
-#include <hpx/execution/algorithms/sender_future.hpp>
 #include <hpx/future.hpp>
 #include <hpx/init.hpp>
 #include <hpx/modules/testing.hpp>
@@ -31,13 +29,12 @@
 namespace tt = hpx::this_thread::experimental;
 
 ///////////////////////////////////////////////////////////////////////////////
-// Test 1: future<int> -> future_sender -> stdexec::then(x*2) -> sync_wait
+// Test 1: future<int> -> as_sender -> stdexec::then(x*2) -> sync_wait
 void test_future_to_sender()
 {
     hpx::future<int> f = hpx::async([]() -> int { return 42; });
 
-    auto snd = hpx::execution::experimental::future_sender<hpx::future<int>>{
-        std::move(f)};
+    auto snd = hpx::execution::experimental::as_sender(std::move(f));
     auto result = tt::sync_wait(std::move(snd) |
         hpx::execution::experimental::then([](int x) { return x * 2; }));
 
@@ -61,8 +58,7 @@ void test_sender_to_future()
 ///////////////////////////////////////////////////////////////////////////////
 // Test 3: future holding std::runtime_error propagates via set_error channel.
 //
-// We verify error propagation by connecting future_sender to a manual receiver
-// that records which completion channel was invoked.
+// We verify error propagation through the public as_sender CPO.
 void test_error_propagation()
 {
     // Create a future that already holds an exception
@@ -75,9 +71,7 @@ void test_error_propagation()
     bool caught_error = false;
     try
     {
-        auto snd =
-            hpx::execution::experimental::future_sender<hpx::future<int>>{
-                std::move(f)};
+        auto snd = hpx::execution::experimental::as_sender(std::move(f));
         auto result = tt::sync_wait(std::move(snd) |
             hpx::execution::experimental::then([](int) { return 0; }));
         // If we get here with a valid result, that's wrong
@@ -99,11 +93,11 @@ void test_error_propagation()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Test 4: future_sender<T> must be move-only (not copyable)
+// Test 4: as_sender(future<T>) must be move-only (not copyable)
 void test_move_only_semantics()
 {
-    using sender_type =
-        hpx::execution::experimental::future_sender<hpx::future<int>>;
+    using sender_type = decltype(hpx::execution::experimental::as_sender(
+        std::declval<hpx::future<int>>()));
 
     // Verify copy operations are deleted
     HPX_TEST(!std::is_copy_constructible_v<sender_type>);
@@ -115,9 +109,7 @@ void test_move_only_semantics()
 
     // Actually move a sender and use it
     hpx::future<int> f = hpx::make_ready_future(10);
-    sender_type s1 =
-        hpx::execution::experimental::future_sender<hpx::future<int>>{
-            std::move(f)};
+    sender_type s1 = hpx::execution::experimental::as_sender(std::move(f));
     sender_type s2 = std::move(s1);    // move construct - must compile
 
     auto result = tt::sync_wait(std::move(s2) |
@@ -128,12 +120,34 @@ void test_move_only_semantics()
 }
 
 ///////////////////////////////////////////////////////////////////////////////
+// Test 5: as_sender(shared_future<T>) remains copyable
+void test_shared_future_copyable_semantics()
+{
+    using sender_type = decltype(hpx::execution::experimental::as_sender(
+        std::declval<hpx::shared_future<int>>()));
+
+    HPX_TEST(std::is_copy_constructible_v<sender_type>);
+    HPX_TEST(std::is_copy_assignable_v<sender_type>);
+
+    hpx::shared_future<int> f = hpx::make_ready_future(12);
+    sender_type s1 = hpx::execution::experimental::as_sender(f);
+    sender_type s2 = s1;
+
+    auto result = tt::sync_wait(std::move(s2) |
+        hpx::execution::experimental::then([](int x) { return x + 1; }));
+
+    HPX_TEST(result.has_value());
+    HPX_TEST_EQ(std::get<0>(*result), 13);
+}
+
+///////////////////////////////////////////////////////////////////////////////
 int hpx_main()
 {
     test_future_to_sender();
     test_sender_to_future();
     test_error_propagation();
     test_move_only_semantics();
+    test_shared_future_copyable_semantics();
 
     return hpx::local::finalize();
 }
