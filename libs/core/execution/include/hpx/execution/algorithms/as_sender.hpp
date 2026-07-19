@@ -257,8 +257,8 @@ namespace hpx::execution::experimental {
         // clang-format on
         constexpr HPX_FORCEINLINE auto operator()(Future&& future) const
         {
-            return hpx::execution::experimental::future_sender<
-                std::decay_t<Future>>{HPX_FORWARD(Future, future)};
+            return detail::future_sender<std::decay_t<Future>>{
+                HPX_FORWARD(Future, future)};
         }
 
         // Scheduler-aware overload: wraps the future into a sender whose

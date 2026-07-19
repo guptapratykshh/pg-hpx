@@ -6,12 +6,12 @@
 //  file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
 /// \file future_sender.hpp
-/// \brief Adapts an hpx::future<T> as a P2300 stdexec sender.
+/// \brief Implementation details for adapting HPX futures as P2300 senders.
 ///
 /// Usage:
 /// \code
 ///   hpx::future<int> f = hpx::async([]{ return 42; });
-///   auto result = hpx::execution::experimental::future_sender<hpx::future<int>>{std::move(f)}
+///   auto result = hpx::execution::experimental::as_sender(std::move(f))
 ///       | hpx::execution::experimental::then([](int x){ return x * 2; })
 ///       | hpx::execution::experimental::sync_wait();
 /// \endcode
@@ -23,18 +23,32 @@
 #include <hpx/futures/traits/future_traits.hpp>
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution_base.hpp>
+#include <hpx/modules/futures.hpp>
 
-namespace hpx::execution::experimental {
-    struct as_sender_t;
-}
-
+#include <atomic>
 #include <exception>
 #include <type_traits>
 #include <utility>
 
-namespace hpx::execution::experimental {
+namespace hpx::execution::experimental::detail {
 
-    HPX_CXX_CORE_EXPORT template <typename Receiver, typename Future>
+    template <typename Result>
+    struct future_sender_completion_signatures
+    {
+        using type = hpx::execution::experimental::completion_signatures<
+            hpx::execution::experimental::set_value_t(Result),
+            hpx::execution::experimental::set_error_t(std::exception_ptr)>;
+    };
+
+    template <>
+    struct future_sender_completion_signatures<void>
+    {
+        using type = hpx::execution::experimental::completion_signatures<
+            hpx::execution::experimental::set_value_t(),
+            hpx::execution::experimental::set_error_t(std::exception_ptr)>;
+    };
+
+    template <typename Receiver, typename Future>
     class future_sender_operation_state
     {
     public:
@@ -68,26 +82,54 @@ namespace hpx::execution::experimental {
         {
             hpx::detail::try_catch_exception_ptr(
                 [&]() {
-                    future_.then([this](future_type f) {
-                        hpx::detail::try_catch_exception_ptr(
-                            [&]() {
-                                if constexpr (std::is_void_v<result_type>)
-                                {
-                                    f.get();
-                                    hpx::execution::experimental::set_value(
-                                        HPX_MOVE(receiver_));
-                                }
-                                else
-                                {
-                                    hpx::execution::experimental::set_value(
-                                        HPX_MOVE(receiver_), f.get());
-                                }
-                            },
-                            [&](std::exception_ptr ep) {
-                                hpx::execution::experimental::set_error(
-                                    HPX_MOVE(receiver_), HPX_MOVE(ep));
-                            });
-                    });
+                    auto state = hpx::traits::detail::get_shared_state(future_);
+
+                    if (!state)
+                    {
+                        HPX_THROW_EXCEPTION(hpx::error::no_state,
+                            "future_sender_operation_state::start",
+                            "the future has no valid shared state");
+                    }
+
+                    auto on_completed = [this]() mutable {
+                        if (future_.has_value())
+                        {
+                            if constexpr (std::is_void_v<result_type>)
+                            {
+                                hpx::execution::experimental::set_value(
+                                    HPX_MOVE(receiver_));
+                            }
+                            else
+                            {
+                                hpx::execution::experimental::set_value(
+                                    HPX_MOVE(receiver_), future_.get());
+                            }
+                        }
+                        else if (future_.has_exception())
+                        {
+                            hpx::execution::experimental::set_error(
+                                HPX_MOVE(receiver_),
+                                future_.get_exception_ptr());
+                        }
+                    };
+
+                    if (!state->is_ready(std::memory_order_relaxed))
+                    {
+                        state->execute_deferred();
+
+                        if (!state->is_ready(std::memory_order_relaxed))
+                        {
+                            state->set_on_completed(HPX_MOVE(on_completed));
+                        }
+                        else
+                        {
+                            on_completed();
+                        }
+                    }
+                    else
+                    {
+                        on_completed();
+                    }
                 },
                 [&](std::exception_ptr ep) {
                     hpx::execution::experimental::set_error(
@@ -99,7 +141,7 @@ namespace hpx::execution::experimental {
         future_type future_;
     };
 
-    HPX_CXX_CORE_EXPORT template <typename Future>
+    template <typename Future>
     struct future_sender
     {
         using sender_concept = hpx::execution::experimental::sender_t;
@@ -107,20 +149,8 @@ namespace hpx::execution::experimental {
         using result_type =
             typename hpx::traits::future_traits<future_type>::type;
 
-        using sent_type = std::conditional_t<
-            std::is_same_v<future_type, hpx::shared_future<result_type>>,
-            result_type const&, result_type>;
-
-        using completion_signatures = std::conditional_t<
-            std::is_void_v<result_type>,
-            hpx::execution::experimental::completion_signatures<
-                hpx::execution::experimental::set_value_t(),
-                hpx::execution::experimental::set_error_t(std::exception_ptr),
-                hpx::execution::experimental::set_stopped_t()>,
-            hpx::execution::experimental::completion_signatures<
-                hpx::execution::experimental::set_value_t(sent_type),
-                hpx::execution::experimental::set_error_t(std::exception_ptr),
-                hpx::execution::experimental::set_stopped_t()>>;
+        using completion_signatures =
+            typename future_sender_completion_signatures<result_type>::type;
 
         explicit future_sender(future_type f) noexcept
           : future_(HPX_MOVE(f))
@@ -157,13 +187,4 @@ namespace hpx::execution::experimental {
         future_type future_;
     };
 
-    template <typename Future,
-        typename =
-            std::enable_if_t<hpx::traits::is_future_v<std::decay_t<Future>>>>
-    future_sender<std::decay_t<Future>> tag_invoke(
-        hpx::execution::experimental::as_sender_t const&, Future&& f)
-    {
-        return future_sender<std::decay_t<Future>>{HPX_FORWARD(Future, f)};
-    }
-
-}    // namespace hpx::execution::experimental
+}    // namespace hpx::execution::experimental::detail
