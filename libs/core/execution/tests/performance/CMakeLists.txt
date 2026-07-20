@@ -4,8 +4,10 @@
 # Distributed under the Boost Software License, Version 1.0. (See accompanying
 # file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
 
-set(benchmarks benchmark_continues_on future_sender_bridge)
+set(benchmarks benchmark_continues_on)
 set(benchmark_continues_on_PARAMETERS THREADS_PER_LOCALITY 4)
+
+list(APPEND benchmarks future_sender_bridge)
 set(future_sender_bridge_PARAMETERS THREADS_PER_LOCALITY 4)
 
 foreach(benchmark ${benchmarks})
