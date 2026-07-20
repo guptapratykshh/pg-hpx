@@ -9,6 +9,8 @@
 
 #include <hpx/config.hpp>
 #include <hpx/preprocessor/cat.hpp>
+#include <hpx/tracing/macros.hpp>
+#include <type_traits>
 
 #if defined(DOXYGEN)
 /// \defgroup tracing Tracing API
@@ -25,6 +27,16 @@
 /// - \b task_timer_data: Opaque context passed to task timers.
 /// - \b scoped_task_timer: RAII object for timing execution tasks. Provides
 ///   `yield()`, `stop()`, and `handle_post_execution()`.
+///
+/// \b Task \b Lifecycle \b Hooks:
+/// - \b task_staged: Task description is registered.
+/// - \b task_created: Thread object is fully constructed.
+/// - \b task_executing: Task begins execution on a worker thread.
+/// - \b task_yielded: Task voluntarily yields to the scheduler.
+/// - \b task_suspended: Task is blocked on an external resource.
+/// - \b task_resumed: Task is unblocked and returns to a pending state.
+/// - \b task_completed: Task finishes its execution loop.
+/// - \b task_deleted: Task identity is removed from scheduler maps.
 ///
 /// \b Regions \b & \b Events:
 /// - \b region: General scope annotation.
@@ -113,3 +125,104 @@ namespace hpx::tracing {
     };
 }    // namespace hpx::tracing
 #endif
+
+namespace hpx::tracing {
+
+    template <typename ThreadData>
+    constexpr void task_created([[maybe_unused]] ThreadData* thrdptr,
+        [[maybe_unused]] void const* parent_task_id = nullptr) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        task_created(ThreadData::get_safe_description(
+                         thrdptr->get_description(), "thread"),
+            thrdptr, parent_task_id);
+#endif
+    }
+
+    template <typename ThreadData>
+    constexpr void task_executing([[maybe_unused]] ThreadData* thrdptr) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        task_executing(thrdptr,
+            ThreadData::get_safe_description(
+                thrdptr->get_description(), "thread"),
+            thrdptr->get_last_worker_thread_num());
+#endif
+    }
+
+    // Note: The `constexpr` specifier on these wrapper functions is only truly
+    // meaningful and exercised in the no-tracing configuration (when HPX_HAVE_TRACING
+    // is NOT defined). If tracing is enabled, the code inside the preprocessor block
+    // makes the function non-constexpr, but this is acceptable as long as we do not
+    // try to call these functions in a constant-evaluation context.
+
+    template <typename ThreadId>
+    constexpr void task_yielded([[maybe_unused]] ThreadId const& id) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        auto* thrdptr = get_thread_id_data(id);
+        using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
+        task_yielded(thrdptr,
+            thread_data_type::get_safe_description(
+                thrdptr->get_description(), "thread"));
+#endif
+    }
+
+    template <typename ThreadId, typename String>
+    constexpr void task_suspended([[maybe_unused]] ThreadId const& id,
+        [[maybe_unused]] String const& reason) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        auto* thrdptr = get_thread_id_data(id);
+        using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
+        if constexpr (std::is_convertible_v<String, char const*>)
+        {
+            task_suspended(thrdptr,
+                thread_data_type::get_safe_description(
+                    thrdptr->get_description(), "thread"),
+                reason);
+        }
+        else
+        {
+            task_suspended(thrdptr,
+                thread_data_type::get_safe_description(
+                    thrdptr->get_description(), "thread"),
+                thread_data_type::get_safe_description(reason, "suspend"));
+        }
+#endif
+    }
+
+    template <typename ThreadId, typename StateX>
+    constexpr void task_resumed([[maybe_unused]] ThreadId const& id,
+        [[maybe_unused]] StateX statex) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        auto* thrdptr = get_thread_id_data(id);
+        using thread_data_type = std::remove_pointer_t<decltype(thrdptr)>;
+        if constexpr (std::is_convertible_v<StateX, char const*>)
+        {
+            task_resumed(thrdptr,
+                thread_data_type::get_safe_description(
+                    thrdptr->get_description(), "thread"),
+                statex);
+        }
+        else
+        {
+            task_resumed(thrdptr,
+                thread_data_type::get_safe_description(
+                    thrdptr->get_description(), "thread"),
+                get_thread_state_ex_name(statex));
+        }
+#endif
+    }
+
+    template <typename ThreadData>
+    constexpr void task_completed([[maybe_unused]] ThreadData* thrdptr) noexcept
+    {
+#if defined(HPX_HAVE_TRACING)
+        task_completed(thrdptr,
+            ThreadData::get_safe_description(
+                thrdptr->get_description(), "thread"));
+#endif
+    }
+}    // namespace hpx::tracing

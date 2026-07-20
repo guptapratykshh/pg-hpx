@@ -103,7 +103,7 @@ jobs:
         shell: bash
         working-directory: build
         run: |
-          ctest -N | python3 ../.github/ci-scripts/generate_test_matrix.py 23 > test_matrix.json
+          ctest -N | python3 ../.github/ci-scripts/generate_test_matrix.py 25 > test_matrix.json
           printf 'matrix=%s\n' "$(cat test_matrix.json)" >> "$GITHUB_OUTPUT"
 
       - name: Package Build Artifacts

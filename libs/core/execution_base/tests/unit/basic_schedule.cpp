@@ -60,10 +60,6 @@ struct non_scheduler_2
 
 struct non_scheduler_3
 {
-    friend example_sender tag_invoke(ex::schedule_t, non_scheduler_3)
-    {
-        return {};
-    }
 };
 
 struct scheduler_1

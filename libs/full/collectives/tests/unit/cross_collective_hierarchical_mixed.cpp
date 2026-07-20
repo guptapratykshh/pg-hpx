@@ -27,6 +27,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -34,6 +35,11 @@
 using namespace hpx::collectives;
 
 constexpr std::uint32_t iterations = 4;
+
+void wait_for_sites(std::vector<hpx::future<void>>& sites)
+{
+    hpx::wait_all(sites);
+}
 
 std::vector<std::int32_t> make_scatter_values(
     std::uint32_t const num_sites, std::uint32_t const iteration)
@@ -91,6 +97,27 @@ void run_explicit_mixed_sequence(std::string const& basename,
                 static_cast<std::int32_t>(100000 * i + 1000 * source + site));
         }
 
+        std::int32_t const inclusive = inclusive_scan(hpx::launch::sync, comms,
+            static_cast<std::int32_t>(site + i), std::plus<std::int32_t>{},
+            this_site_arg(site), generation_arg(++generation));
+        std::int32_t expected_inclusive = 0;
+        for (std::uint32_t source = 0; source != site + 1; ++source)
+        {
+            expected_inclusive += static_cast<std::int32_t>(source + i);
+        }
+        HPX_TEST_EQ(inclusive, expected_inclusive);
+
+        std::int32_t const exclusive = exclusive_scan(hpx::launch::sync, comms,
+            static_cast<std::int32_t>(site + i),
+            static_cast<std::int32_t>(90000 + i), std::plus<std::int32_t>{},
+            this_site_arg(site), generation_arg(++generation));
+        std::int32_t expected_exclusive = 90000 + static_cast<std::int32_t>(i);
+        for (std::uint32_t source = 0; source != site; ++source)
+        {
+            expected_exclusive += static_cast<std::int32_t>(source + i);
+        }
+        HPX_TEST_EQ(exclusive, expected_exclusive);
+
         barrier(hpx::launch::sync, comms, this_site_arg(site),
             generation_arg(++generation));
 
@@ -128,7 +155,7 @@ void test_local_explicit_mixed_sequence(
         }));
     }
 
-    hpx::wait_all(HPX_MOVE(sites));
+    wait_for_sites(sites);
 }
 
 void run_default_generation_sequence(std::string const& basename,
@@ -242,7 +269,7 @@ void test_local_default_generation(
         }));
     }
 
-    hpx::wait_all(HPX_MOVE(sites));
+    wait_for_sites(sites);
 }
 
 void test_distributed_explicit_mixed_sequence()
@@ -330,6 +357,31 @@ void test_local_flat_fallback_sharing(std::uint32_t const num_sites)
                 }
                 HPX_TEST_EQ(reduced, expected_sum);
 
+                // inclusive_scan and exclusive_scan (flat fast paths).
+                std::int32_t const inclusive = inclusive_scan(hpx::launch::sync,
+                    comms, static_cast<std::int32_t>(site + i),
+                    std::plus<std::int32_t>{}, this_site_arg(site),
+                    generation_arg(++generation));
+                std::int32_t expected_inclusive = 0;
+                for (std::uint32_t source = 0; source != site + 1; ++source)
+                {
+                    expected_inclusive += static_cast<std::int32_t>(source + i);
+                }
+                HPX_TEST_EQ(inclusive, expected_inclusive);
+
+                std::int32_t const exclusive = exclusive_scan(hpx::launch::sync,
+                    comms, static_cast<std::int32_t>(site + i),
+                    static_cast<std::int32_t>(60000 + i),
+                    std::plus<std::int32_t>{}, this_site_arg(site),
+                    generation_arg(++generation));
+                std::int32_t expected_exclusive =
+                    60000 + static_cast<std::int32_t>(i);
+                for (std::uint32_t source = 0; source != site; ++source)
+                {
+                    expected_exclusive += static_cast<std::int32_t>(source + i);
+                }
+                HPX_TEST_EQ(exclusive, expected_exclusive);
+
                 // all_to_all (flat fast path).
                 std::vector<std::int32_t> outgoing(num_sites);
                 for (std::uint32_t dest = 0; dest != num_sites; ++dest)
@@ -370,7 +422,7 @@ void test_local_flat_fallback_sharing(std::uint32_t const num_sites)
         }));
     }
 
-    hpx::wait_all(HPX_MOVE(sites));
+    wait_for_sites(sites);
 }
 
 // Generation 0 is invalid (generations must be positive). The hierarchical
@@ -408,6 +460,33 @@ void test_local_zero_generation_rejected(std::uint32_t const num_sites)
             }
             HPX_TEST(all_gather_rejected);
 
+            bool inclusive_scan_rejected = false;
+            try
+            {
+                inclusive_scan(hpx::launch::sync, comms,
+                    static_cast<std::int32_t>(site), std::plus<std::int32_t>{},
+                    this_site_arg(site), generation_arg(0));
+            }
+            catch (hpx::exception const&)
+            {
+                inclusive_scan_rejected = true;
+            }
+            HPX_TEST(inclusive_scan_rejected);
+
+            bool exclusive_scan_rejected = false;
+            try
+            {
+                exclusive_scan(hpx::launch::sync, comms,
+                    static_cast<std::int32_t>(site), std::int32_t(0),
+                    std::plus<std::int32_t>{}, this_site_arg(site),
+                    generation_arg(0));
+            }
+            catch (hpx::exception const&)
+            {
+                exclusive_scan_rejected = true;
+            }
+            HPX_TEST(exclusive_scan_rejected);
+
             bool broadcast_rejected = false;
             try
             {
@@ -427,10 +506,165 @@ void test_local_zero_generation_rejected(std::uint32_t const num_sites)
                 broadcast_rejected = true;
             }
             HPX_TEST(broadcast_rejected);
+
+            bool oversized_broadcast_rejected = false;
+            try
+            {
+                std::size_t const oversized_generation =
+                    (std::numeric_limits<std::size_t>::max)() / 2 + 1;
+                if (site == 0)
+                {
+                    broadcast_to(hpx::launch::sync, comms, std::int32_t(1),
+                        this_site_arg(site),
+                        generation_arg(oversized_generation));
+                }
+                else
+                {
+                    broadcast_from<std::int32_t>(hpx::launch::sync, comms,
+                        this_site_arg(site),
+                        generation_arg(oversized_generation));
+                }
+            }
+            catch (hpx::exception const&)
+            {
+                oversized_broadcast_rejected = true;
+            }
+            HPX_TEST(oversized_broadcast_rejected);
         }));
     }
 
-    hpx::wait_all(HPX_MOVE(sites));
+    wait_for_sites(sites);
+}
+
+// An explicit generation number may not follow auto-generation operations on
+// the same communicator instance: the internal counter's position is not
+// observable, so any explicit number chosen afterwards could only be a guess
+// that previously either threw or hung. The reverse transition (explicit
+// first, default afterwards) stays valid because an auto generation always
+// synchronizes on the gate's current position.
+void test_local_generation_mode_transition(std::uint32_t const num_sites)
+{
+    std::string const basename =
+        "/test/cross_collective_hierarchical_mixed/mode_transition/" +
+        std::to_string(num_sites) + "/";
+
+    std::vector<hpx::future<void>> sites;
+    sites.reserve(num_sites);
+
+    for (std::uint32_t site = 0; site != num_sites; ++site)
+    {
+        sites.push_back(hpx::async([=]() {
+            // auto -> explicit: rejected on every site
+            {
+                auto const comms = create_hierarchical_communicator(
+                    (basename + "auto/").c_str(), num_sites_arg(num_sites),
+                    this_site_arg(site), arity_arg(2), generation_arg(),
+                    root_site_arg(), flat_fallback_threshold_arg(0));
+
+                std::int32_t received = 0;
+                if (site == 0)
+                {
+                    received = broadcast_to(hpx::launch::sync, comms,
+                        std::int32_t(41001), this_site_arg(site),
+                        generation_arg());
+                }
+                else
+                {
+                    received = broadcast_from<std::int32_t>(hpx::launch::sync,
+                        comms, this_site_arg(site), generation_arg());
+                }
+                HPX_TEST_EQ(received, 41001);
+
+                // The error code matters: before the latch this sequence
+                // already threw invalid_status from deep inside the gate
+                // (or hung, had the number landed above the gate position).
+                // The latch turns it into a bad_parameter at the boundary.
+                bool explicit_after_auto_rejected = false;
+                try
+                {
+                    if (site == 0)
+                    {
+                        broadcast_to(hpx::launch::sync, comms,
+                            std::int32_t(41002), this_site_arg(site),
+                            generation_arg(1));
+                    }
+                    else
+                    {
+                        broadcast_from<std::int32_t>(hpx::launch::sync, comms,
+                            this_site_arg(site), generation_arg(1));
+                    }
+                }
+                catch (hpx::exception const& e)
+                {
+                    explicit_after_auto_rejected =
+                        e.get_error() == hpx::error::bad_parameter;
+                }
+                HPX_TEST(explicit_after_auto_rejected);
+            }
+
+            // explicit -> auto: stays valid
+            {
+                auto const comms = create_hierarchical_communicator(
+                    (basename + "explicit/").c_str(), num_sites_arg(num_sites),
+                    this_site_arg(site), arity_arg(2), generation_arg(),
+                    root_site_arg(), flat_fallback_threshold_arg(0));
+
+                std::int32_t received = 0;
+                if (site == 0)
+                {
+                    received = broadcast_to(hpx::launch::sync, comms,
+                        std::int32_t(41003), this_site_arg(site),
+                        generation_arg(1));
+                }
+                else
+                {
+                    received = broadcast_from<std::int32_t>(hpx::launch::sync,
+                        comms, this_site_arg(site), generation_arg(1));
+                }
+                HPX_TEST_EQ(received, 41003);
+
+                if (site == 0)
+                {
+                    received = broadcast_to(hpx::launch::sync, comms,
+                        std::int32_t(41004), this_site_arg(site),
+                        generation_arg());
+                }
+                else
+                {
+                    received = broadcast_from<std::int32_t>(hpx::launch::sync,
+                        comms, this_site_arg(site), generation_arg());
+                }
+                HPX_TEST_EQ(received, 41004);
+
+                // The latch persists: once the auto call above has run,
+                // explicit numbering stays rejected for the instance's
+                // lifetime.
+                bool explicit_after_transition_rejected = false;
+                try
+                {
+                    if (site == 0)
+                    {
+                        broadcast_to(hpx::launch::sync, comms,
+                            std::int32_t(41005), this_site_arg(site),
+                            generation_arg(2));
+                    }
+                    else
+                    {
+                        broadcast_from<std::int32_t>(hpx::launch::sync, comms,
+                            this_site_arg(site), generation_arg(2));
+                    }
+                }
+                catch (hpx::exception const& e)
+                {
+                    explicit_after_transition_rejected =
+                        e.get_error() == hpx::error::bad_parameter;
+                }
+                HPX_TEST(explicit_after_transition_rejected);
+            }
+        }));
+    }
+
+    wait_for_sites(sites);
 }
 
 int hpx_main()
@@ -446,6 +680,7 @@ int hpx_main()
             }
             test_local_flat_fallback_sharing(num_sites);
             test_local_zero_generation_rejected(num_sites);
+            test_local_generation_mode_transition(num_sites);
         }
     }
 

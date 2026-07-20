@@ -13,7 +13,6 @@
 #include <hpx/modules/execution.hpp>
 #include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/functional.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/threading_base.hpp>
 
 #include <atomic>

@@ -170,7 +170,7 @@ namespace hpx::execution::experimental::detail {
                 requires(std::is_same_v<CPO,
                              hpx::execution::experimental::set_value_t> ||
                     std::is_same_v<CPO,
-                        hpx::execution::experimental::set_stopped_t>)
+                        hpx::execution::experimental::set_error_t>)
             constexpr auto query(
                 hpx::execution::experimental::get_completion_scheduler_t<CPO>)
                 const noexcept

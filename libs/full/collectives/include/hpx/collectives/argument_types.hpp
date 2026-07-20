@@ -89,7 +89,11 @@ namespace hpx::collectives {
     /// The generational counter identifying the sequence number of the
     /// operation performed on the given base name. It needs to be supplied only
     /// if the operation on the given base name has to be performed more than
-    /// once. It must be a positive number greater than zero.
+    /// once. It must be a positive number greater than zero. On any given
+    /// communicator instance, operations that pass an explicit generation may
+    /// not follow operations that used the default: the internal counter's
+    /// position is no longer reliably known to the caller. The reverse
+    /// transition, from explicit numbering back to the default, remains valid.
     HPX_CXX_EXPORT using generation_arg =
         detail::argument_type<detail::generation_tag>;
 

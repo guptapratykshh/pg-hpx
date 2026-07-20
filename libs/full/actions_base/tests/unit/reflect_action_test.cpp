@@ -111,6 +111,36 @@ int main()
         static_assert(broadcast_action::arity == std::size_t(1),
             "arity must be a compile-time constant");
     }
+    // Test: reflect_direct_action reports direct-execution semantics
+    // and dispatches correctly for both regular and noexcept functions
+    {
+        using direct_compute =
+            hpx::actions::reflect_direct_action<^^app::compute>;
+        static_assert(direct_compute::direct_execution::value,
+            "reflect_direct_action must report direct_execution");
+        static_assert(direct_compute::get_action_type() ==
+                hpx::actions::action_flavor::direct_action,
+            "reflect_direct_action must report action_flavor::direct_action");
+        static_assert(direct_compute::arity == std::size_t(2),
+            "arity must match function parameter count");
+        hpx::naming::address_type lva{};
+        hpx::naming::component_type comptype{};
+        HPX_TEST_EQ(direct_compute::invoke(lva, comptype, 3.0, 4.0), 7);
+        // Verify invocation_count_registrar_ exists (symmetry with reflect_action)
+        using registrar_type =
+            decltype(direct_compute::invocation_count_registrar_);
+        static_assert(!std::is_void_v<registrar_type>,
+            "reflect_direct_action must have invocation_count_registrar_");
+    }
+    {
+        using direct_broadcast =
+            hpx::actions::reflect_direct_action<^^app::broadcast>;
+        static_assert(direct_broadcast::direct_execution::value,
+            "reflect_direct_action must report direct_execution for noexcept");
+        hpx::naming::address_type lva{};
+        hpx::naming::component_type comptype{};
+        direct_broadcast::invoke(lva, comptype, 42);
+    }
     return hpx::util::report_errors();
 }
 

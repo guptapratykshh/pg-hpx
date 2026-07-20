@@ -67,11 +67,35 @@ namespace hpx {
                     .dataflow(HPX_FORWARD(Args, args)...);
             }
 
+            // ADL hook (e.g. execution::when_all.hpp sender bridge via
+            // hpx_invoke). Preferred over default future-based dispatch.
+            template <typename Arg0, typename... Args>
+                requires(
+                    !requires(Arg0&& a0, Args&&... args) {
+                        HPX_FORWARD(Arg0, a0).dataflow(
+                            HPX_FORWARD(Args, args)...);
+                    } &&
+                    requires(dataflow_t tag, Arg0&& a0, Args&&... args) {
+                        hpx_invoke(tag, HPX_FORWARD(Arg0, a0),
+                            HPX_FORWARD(Args, args)...);
+                    })
+            constexpr decltype(auto) operator()(
+                Arg0&& arg0, Args&&... args) const
+            {
+                return hpx_invoke(
+                    *this, HPX_FORWARD(Arg0, arg0), HPX_FORWARD(Args, args)...);
+            }
+
             // Non-member dispatch (handles both allocator and non-allocator)
             template <typename F, typename... Ts>
-                requires(!requires(F&& f, Ts&&... ts) {
-                    HPX_FORWARD(F, f).dataflow(HPX_FORWARD(Ts, ts)...);
-                })
+                requires(
+                    !requires(F&& f, Ts&&... ts) {
+                        HPX_FORWARD(F, f).dataflow(HPX_FORWARD(Ts, ts)...);
+                    } &&
+                    !requires(dataflow_t tag, F&& f, Ts&&... ts) {
+                        hpx_invoke(
+                            tag, HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...);
+                    })
             constexpr HPX_FORCEINLINE decltype(auto) operator()(
                 F&& f, Ts&&... ts) const
             {

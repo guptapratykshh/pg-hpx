@@ -191,8 +191,11 @@ void test_as_sender_with_scheduler_shared_future()
     hpx::shared_future<int> f = hpx::make_ready_future(13);
 
     auto snd = ex::as_sender(f, sched);
-    auto result =
-        tt::sync_wait(std::move(snd) | ex::then([](int x) { return x + 1; }));
+    static_assert(std::is_copy_constructible_v<decltype(snd)>);
+    auto snd_copy = snd;
+
+    auto result = tt::sync_wait(
+        std::move(snd_copy) | ex::then([](int x) { return x + 1; }));
 
     HPX_TEST(result.has_value());
     HPX_TEST_EQ(std::get<0>(*result), 14);

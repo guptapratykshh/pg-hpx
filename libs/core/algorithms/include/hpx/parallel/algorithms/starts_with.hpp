@@ -117,6 +117,7 @@ namespace hpx {
 #include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/equal.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
@@ -230,9 +231,9 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::starts_with
     HPX_CXX_CORE_EXPORT inline constexpr struct starts_with_t final
-      : hpx::detail::tag_parallel_algorithm<starts_with_t>
+      : hpx::detail::tag_dispatch<starts_with_t,
+            hpx::detail::tag_parallel_algorithm<starts_with_t>>
     {
-    private:
         template <typename InIter1, typename InIter2,
             typename Pred = hpx::parallel::detail::equal_to>
         // clang-format off
@@ -245,8 +246,8 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend bool tag_fallback_invoke(hpx::starts_with_t, InIter1 first1,
-            InIter1 last1, InIter2 first2, InIter2 last2, Pred pred = Pred())
+        static bool invoke_default(InIter1 first1, InIter1 last1,
+            InIter2 first2, InIter2 last2, Pred pred = Pred())
         {
             static_assert(std::input_iterator<InIter1>,
                 "Required at least input iterator.");
@@ -272,9 +273,8 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::starts_with_t,
-            ExPolicy&& policy, FwdIter1 first1, FwdIter1 last1, FwdIter2 first2,
-            FwdIter2 last2, Pred pred = Pred())
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first1,
+            FwdIter1 last1, FwdIter2 first2, FwdIter2 last2, Pred pred = Pred())
         {
             static_assert(std::forward_iterator<FwdIter1>,
                 "Required at least forward iterator.");

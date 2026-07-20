@@ -11,7 +11,7 @@
 #include <hpx/execution/executors/execution_parameters.hpp>
 #include <hpx/execution/traits/executor_traits.hpp>
 #include <hpx/modules/execution_base.hpp>
-#include <hpx/modules/tag_invoke.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/timing.hpp>
 
 #include <concepts>

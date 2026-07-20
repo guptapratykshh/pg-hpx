@@ -19,16 +19,6 @@
 
 namespace ex = hpx::execution::experimental;
 
-// This overload is only used to check dispatching. It is not a useful
-// implementation.
-template <typename Allocator = hpx::util::internal_allocator<>>
-auto tag_invoke(ex::ensure_started_t, custom_sender_tag_invoke s,
-    Allocator const& = Allocator{})
-{
-    s.tag_invoke_overload_called = true;
-    return void_sender{};
-}
-
 int main()
 {
     // Success path
@@ -148,8 +138,8 @@ int main()
         HPX_TEST(set_value_called);
     }
 
-    // stdexec::ensure_started is an adaptor, so it should not dispatch through
-    // a sender-specific tag_invoke overload here.
+    // stdexec::ensure_started is an adaptor; no sender-specific customization
+    // hook is exercised here.
     {
         std::atomic<bool> receiver_set_value_called{false};
         std::atomic<bool> tag_invoke_overload_called{false};

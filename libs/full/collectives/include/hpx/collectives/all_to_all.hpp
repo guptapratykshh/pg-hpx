@@ -214,6 +214,7 @@ namespace hpx { namespace collectives {
 #include <hpx/assert.hpp>
 #include <hpx/collectives/argument_types.hpp>
 #include <hpx/collectives/create_communicator.hpp>
+#include <hpx/collectives/detail/flattened_data.hpp>
 #include <hpx/collectives/detail/hierarchical_all_to_all_helpers.hpp>
 #include <hpx/collectives/detail/hierarchical_helpers.hpp>
 #include <hpx/modules/async_base.hpp>
@@ -223,7 +224,6 @@ namespace hpx { namespace collectives {
 #include <hpx/modules/futures.hpp>
 #include <hpx/modules/type_support.hpp>
 
-#include <algorithm>
 #include <cstddef>
 #include <type_traits>
 #include <utility>
@@ -247,42 +247,57 @@ namespace hpx::traits {
     template <typename Communicator>
     struct communication_operation<Communicator, communication::all_to_all_tag>
     {
-        template <typename Result, typename T>
+        template <typename Result, typename Payload>
         static Result get(Communicator& communicator, std::size_t which,
             std::size_t generation,
             hpx::collectives::detail::generation_mode num_generations,
-            std::vector<T>&& t)
+            Payload&& payload)
         {
-            return communicator.template handle_data<std::vector<T>>(
+            using payload_type = std::decay_t<Payload>;
+            return communicator.template handle_data<payload_type>(
                 communication::communicator_data<
                     communication::all_to_all_tag>::name(),
                 which, generation,
                 // step function (invoked for each get)
-                [&t](auto& data, std::size_t which) {
-                    data[which] = HPX_MOVE(t);
+                [&payload](auto& data, std::size_t which) {
+                    data[which] = HPX_FORWARD(Payload, payload);
                 },
                 // finalizer (invoked after all data has been received)
                 [](auto& data, auto&, std::size_t which) {
-                    // slice the overall data based on the locality id of the
-                    // requesting site
-                    std::vector<T> result;
-                    result.reserve(data.size());
-                    for (auto& v : data)
-                    {
-                        if (v.size() != data.size())
-                        {
-                            HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
-                                "hpx::collectives::all_to_all",
-                                "each participating site must contribute "
-                                "exactly num_sites elements");
-                        }
-
-                        result.push_back(Communicator::template handle_bool<T>(
-                            HPX_MOVE(v[which])));
-                    }
-                    return result;
+                    return finalize(data, which);
                 },
                 num_generations);
+        }
+
+    private:
+        template <typename T>
+        static std::vector<T> finalize(
+            std::vector<std::vector<T>>& data, std::size_t const which)
+        {
+            std::vector<T> result;
+            result.reserve(data.size());
+            for (auto& values : data)
+            {
+                if (values.size() != data.size())
+                {
+                    HPX_THROW_EXCEPTION(hpx::error::bad_parameter,
+                        "hpx::collectives::all_to_all",
+                        "each participating site must contribute exactly "
+                        "num_sites elements");
+                }
+
+                result.push_back(hpx::collectives::detail::handle_bool<T>(
+                    HPX_MOVE(values[which])));
+            }
+            return result;
+        }
+
+        template <typename T>
+        static hpx::collectives::detail::ragged_rows<T> finalize(
+            std::vector<hpx::collectives::detail::ragged_rows<T>>& data,
+            std::size_t const which)
+        {
+            return hpx::collectives::detail::ragged_rows<T>(data, which);
         }
     };
 }    // namespace hpx::traits
@@ -292,22 +307,196 @@ namespace hpx::collectives {
     ///////////////////////////////////////////////////////////////////////////
     namespace detail {
 
+        template <typename T>
+        class hierarchical_all_to_all_exchange
+        {
+        public:
+            hierarchical_all_to_all_exchange(uniform_rows<T>&& gathered,
+                std::size_t const group_index, std::size_t const num_sites,
+                std::size_t const arity)
+              : group_index_(group_index)
+              , num_sites_(num_sites)
+              , arity_(arity)
+              , my_group_size_(
+                    get_top_level_group_size(group_index, num_sites, arity))
+              , num_groups_(get_top_level_group_count(num_sites, arity))
+            {
+                constexpr char const* operation =
+                    "hpx::collectives::all_to_all (hierarchical)";
+
+                gathered.validate(operation);
+                if (gathered.num_rows() != my_group_size_)
+                {
+                    HPX_THROW_EXCEPTION(hpx::error::invalid_status, operation,
+                        "the subtree gather returned an unexpected number of "
+                        "rows");
+                }
+                if (gathered.row_width() != num_sites)
+                {
+                    HPX_THROW_EXCEPTION(hpx::error::invalid_status, operation,
+                        "the subtree gather returned rows with an unexpected "
+                        "number of elements");
+                }
+
+                std::size_t const exchange_size = checked_data_size_product(
+                    my_group_size_, num_sites_ - my_group_size_);
+                std::size_t const exchange_segments =
+                    checked_data_size_product(my_group_size_, num_groups_);
+                std::size_t const exchange_boundaries =
+                    checked_data_size_sum(exchange_segments, 1);
+                std::size_t const diagonal_size =
+                    checked_data_size_product(my_group_size_, my_group_size_);
+
+                std::vector<T> gathered_data =
+                    HPX_MOVE(gathered).release_data();
+
+                exchange_data_.reserve(exchange_size);
+                exchange_offsets_.reserve(exchange_boundaries);
+                exchange_offsets_.push_back(0);
+                diagonal_.reserve(diagonal_size);
+
+                for (std::size_t row = 0; row != my_group_size_; ++row)
+                {
+                    std::size_t const row_left =
+                        checked_data_size_product(row, num_sites_);
+                    for (std::size_t group = 0; group != num_groups_; ++group)
+                    {
+                        std::size_t const destination_group_size =
+                            get_top_level_group_size(group, num_sites_, arity_);
+                        std::size_t const destination_left =
+                            get_top_level_group_left(group, num_sites_, arity_);
+                        auto& destination =
+                            group == group_index_ ? diagonal_ : exchange_data_;
+                        for (std::size_t destination_site = destination_left;
+                            destination_site !=
+                            destination_left + destination_group_size;
+                            ++destination_site)
+                        {
+                            destination.emplace_back(handle_bool<T>(HPX_MOVE(
+                                gathered_data[row_left + destination_site])));
+                        }
+                        exchange_offsets_.push_back(exchange_data_.size());
+                    }
+                }
+
+                HPX_ASSERT(exchange_data_.size() == exchange_size);
+                HPX_ASSERT(diagonal_.size() == diagonal_size);
+            }
+
+            [[nodiscard]] ragged_rows<T> release_exchange() &
+            {
+                return ragged_rows<T>(
+                    HPX_MOVE(exchange_data_), HPX_MOVE(exchange_offsets_));
+            }
+
+            [[nodiscard]] uniform_rows<T> transpose(
+                ragged_rows<T>&& received) &&
+            {
+                constexpr char const* operation =
+                    "hpx::collectives::all_to_all (hierarchical)";
+                received.validate(operation);
+                if (received.num_segments() != num_groups_)
+                {
+                    HPX_THROW_EXCEPTION(hpx::error::invalid_status, operation,
+                        "the inter-group exchange returned an unexpected "
+                        "number of blocks");
+                }
+                for (std::size_t group = 0; group != num_groups_; ++group)
+                {
+                    std::size_t const source_group_size =
+                        get_top_level_group_size(group, num_sites_, arity_);
+                    std::size_t const expected_size = group == group_index_ ?
+                        0 :
+                        checked_data_size_product(
+                            source_group_size, my_group_size_);
+                    if (received.segment_size(group) != expected_size)
+                    {
+                        HPX_THROW_EXCEPTION(hpx::error::invalid_status,
+                            operation,
+                            "the inter-group exchange returned a block with "
+                            "an unexpected number of elements");
+                    }
+                }
+
+                std::vector<std::size_t> const received_offsets =
+                    received.offsets();
+                std::vector<T> received_data =
+                    HPX_MOVE(received).release_data();
+
+                // Create one scatter row for each destination site j in this
+                // representative's group. Within each row, source groups are
+                // visited from left to right and their sites from low to high,
+                // preserving global source-site order. Both an off-diagonal
+                // received segment and the retained local diagonal use
+                // [source site within group][destination site within this
+                // group] storage order. Thus source * my_group_size_ + j
+                // selects the value for destination j; off-diagonal data also
+                // starts at received_offsets[group].
+                std::vector<T> scatter_data;
+                scatter_data.reserve(
+                    checked_data_size_product(my_group_size_, num_sites_));
+                for (std::size_t j = 0; j != my_group_size_; ++j)
+                {
+                    for (std::size_t group = 0; group != num_groups_; ++group)
+                    {
+                        std::size_t const source_group_size =
+                            get_top_level_group_size(group, num_sites_, arity_);
+                        for (std::size_t source = 0;
+                            source != source_group_size; ++source)
+                        {
+                            if (group == group_index_)
+                            {
+                                std::size_t const index =
+                                    source * my_group_size_ + j;
+                                scatter_data.emplace_back(
+                                    handle_bool<T>(HPX_MOVE(diagonal_[index])));
+                            }
+                            else
+                            {
+                                std::size_t const index =
+                                    received_offsets[group] +
+                                    source * my_group_size_ + j;
+                                scatter_data.emplace_back(handle_bool<T>(
+                                    HPX_MOVE(received_data[index])));
+                            }
+                        }
+                    }
+                }
+                HPX_ASSERT(scatter_data.size() ==
+                    checked_data_size_product(my_group_size_, num_sites_));
+
+                return uniform_rows<T>(HPX_MOVE(scatter_data), my_group_size_);
+            }
+
+        private:
+            std::size_t group_index_;
+            std::size_t num_sites_;
+            std::size_t arity_;
+            std::size_t my_group_size_;
+            std::size_t num_groups_;
+            std::vector<T> exchange_data_;
+            std::vector<std::size_t> exchange_offsets_;
+            std::vector<T> diagonal_;
+        };
+
         // all_to_all: detail entry point carrying the internal generation step.
         // The public overload forwards with single_step; the hierarchical
         // overload passes double_step for the flat fast path and the inter-group
         // exchange.
-        template <typename T>
-        hpx::future<std::vector<T>> all_to_all(communicator fid,
-            std::vector<T>&& local_result, this_site_arg this_site,
+        template <typename Payload>
+        hpx::future<std::decay_t<Payload>> all_to_all(communicator fid,
+            Payload&& local_result, this_site_arg this_site,
             generation_arg const generation, generation_mode num_generations)
         {
+            using payload_type = std::decay_t<Payload>;
+
             if (this_site.is_default())
             {
                 this_site = agas::get_locality_id();
             }
             if (generation == 0)
             {
-                return hpx::make_exceptional_future<std::vector<T>>(
+                return hpx::make_exceptional_future<payload_type>(
                     HPX_GET_EXCEPTION(hpx::error::bad_parameter,
                         "hpx::collectives::all_to_all",
                         "the generation number shouldn't be zero"));
@@ -316,38 +505,61 @@ namespace hpx::collectives {
             // Handle operation right away if there is only one value.
             if (auto [num_sites, comm_site] = fid.get_info(); num_sites == 1)
             {
-                if (local_result.size() != 1)
+                if constexpr (!is_ragged_rows_v<payload_type>)
                 {
-                    return hpx::make_exceptional_future<std::vector<T>>(
-                        HPX_GET_EXCEPTION(hpx::error::bad_parameter,
-                            "hpx::collectives::all_to_all",
-                            "each participating site must contribute exactly "
-                            "num_sites elements"));
+                    if (local_result.size() != 1)
+                    {
+                        return hpx::make_exceptional_future<payload_type>(
+                            HPX_GET_EXCEPTION(hpx::error::bad_parameter,
+                                "hpx::collectives::all_to_all",
+                                "each participating site must contribute "
+                                "exactly num_sites elements"));
+                    }
                 }
 
                 if (this_site != comm_site)
                 {
-                    return hpx::make_exceptional_future<std::vector<T>>(
+                    return hpx::make_exceptional_future<payload_type>(
                         HPX_GET_EXCEPTION(hpx::error::bad_parameter,
                             "hpx::collectives::all_to_all",
                             "the local site should be zero if only one site is "
                             "involved"));
                 }
-                return hpx::make_ready_future(HPX_MOVE(local_result));
+
+                if constexpr (is_ragged_rows_v<payload_type>)
+                {
+                    // Match the communicator finalizer: the outgoing carrier
+                    // has one segment per source row, while the received
+                    // carrier has one segment per contributor. With one
+                    // destination column all source-row data is already
+                    // contiguous, so only the offsets need to be collapsed.
+                    payload_type payload(HPX_FORWARD(Payload, local_result));
+                    payload.validate_for_exchange(
+                        num_sites, "hpx::collectives::all_to_all");
+                    auto data = HPX_MOVE(payload).release_data();
+                    std::vector<std::size_t> offsets{0, data.size()};
+                    return hpx::make_ready_future(
+                        payload_type(HPX_MOVE(data), HPX_MOVE(offsets)));
+                }
+                else
+                {
+                    return hpx::make_ready_future(
+                        HPX_FORWARD(Payload, local_result));
+                }
             }
 
             auto all_to_all_data =
-                [local_result = HPX_MOVE(local_result), this_site, generation,
-                    num_generations](
-                    communicator&& c) mutable -> hpx::future<std::vector<T>> {
+                [local_result = HPX_FORWARD(Payload, local_result), this_site,
+                    generation, num_generations](
+                    communicator&& c) mutable -> hpx::future<payload_type> {
                 using action_type =
                     communicator_server::communication_get_direct_action<
                         traits::communication::all_to_all_tag,
-                        hpx::future<std::vector<T>>, generation_mode,
-                        std::vector<T>>;
+                        hpx::future<payload_type>, generation_mode,
+                        payload_type>;
 
                 // explicitly unwrap returned future
-                hpx::future<std::vector<T>> result =
+                hpx::future<payload_type> result =
                     hpx::async(action_type(), c, this_site, generation,
                         num_generations, HPX_MOVE(local_result));
 
@@ -499,19 +711,15 @@ namespace hpx::collectives {
             this_site = agas::get_locality_id();
         }
 
+        if (auto const error =
+                detail::validate_hierarchical_communicator(communicators,
+                    this_site, "hpx::collectives::all_to_all (hierarchical)"))
+        {
+            return hpx::make_exceptional_future<std::vector<T>>(error);
+        }
+
         std::size_t const num_sites_val = hpx::get<0>(communicators.get_info());
         std::size_t const arity_val = communicators.get_arity();
-
-        // An out-of-range site would classify into no top-level group and
-        // silently take the non-representative branch, hanging the gather.
-        if (this_site >= num_sites_val)
-        {
-            return hpx::make_exceptional_future<std::vector<T>>(
-                HPX_GET_EXCEPTION(hpx::error::bad_parameter,
-                    "hpx::collectives::all_to_all (hierarchical)",
-                    "this_site must be smaller than the number of "
-                    "participating sites"));
-        }
 
         // The phase-2 packing slices each gathered contribution with
         // unchecked iterator arithmetic, so a wrong-size contribution must
@@ -556,68 +764,39 @@ namespace hpx::collectives {
                 detail::generation_mode::double_step);
         }
 
-        auto const groups =
-            detail::get_top_level_groups(num_sites_val, arity_val);
-        auto const gidx = detail::classify_site(this_site, groups);
+        std::ptrdiff_t const gidx =
+            detail::classify_site(this_site, num_sites_val, arity_val);
         bool const is_representative =
-            gidx != -1 && this_site == groups[gidx].left;
+            detail::is_top_level_rep(gidx, this_site, num_sites_val, arity_val);
 
         if (is_representative)
         {
             // Phase 1: Gather all subtree sites' data at this rep.
-            std::vector<std::vector<T>> gathered =
+            detail::uniform_rows<T> gathered =
                 detail::subtree_gather_at_top_rep(
                     communicators, HPX_MOVE(local_result), first_gen);
 
-            std::size_t const my_group_size = groups[gidx].size;
-            std::size_t const num_groups = groups.size();
+            std::size_t const group_index = static_cast<std::size_t>(gidx);
 
-            // Phase 2: Build exchange blocks -- pack gathered data by
-            // destination group, then perform flat all_to_all among reps.
-            std::vector<std::vector<T>> exchange_blocks(num_groups);
-            for (std::size_t group = 0; group != num_groups; ++group)
-            {
-                std::size_t const dest_group_size = groups[group].size;
-                std::size_t const dest_left = groups[group].left;
-
-                exchange_blocks[group].reserve(my_group_size * dest_group_size);
-                for (std::size_t s = 0; s != my_group_size; ++s)
-                {
-                    std::move(gathered[s].begin() + dest_left,
-                        gathered[s].begin() + dest_left + dest_group_size,
-                        std::back_inserter(exchange_blocks[group]));
-                }
-            }
+            // Phase 2: Pack one flat sequence of destination-group segments
+            // for each gathered row. Retain the local diagonal separately and
+            // represent it by empty exchange segments, avoiding its round trip
+            // through the inter-group communicator.
+            detail::hierarchical_all_to_all_exchange<T> exchange(
+                HPX_MOVE(gathered), group_index, num_sites_val, arity_val);
 
             // The exchange touches the inter-group communicator once but must
             // advance it by two generations to stay in lock-step with the
             // subtree communicators, so request double_step.
-            std::vector<std::vector<T>> received =
+            hpx::future<detail::ragged_rows<T>> received_future =
                 detail::all_to_all(communicators.get(0),
-                    HPX_MOVE(exchange_blocks), communicators.site(0), first_gen,
-                    detail::generation_mode::double_step)
-                    .get();
+                    exchange.release_exchange(), communicators.site(0),
+                    first_gen, detail::generation_mode::double_step);
 
-            // Phase 3: Transpose received blocks back to per-site vectors,
-            // then scatter down the subtree.
-            std::vector<std::vector<T>> scatter_input(my_group_size);
-            for (std::size_t j = 0; j != my_group_size; ++j)
-            {
-                scatter_input[j].resize(num_sites_val);
-                for (std::size_t group = 0; group != num_groups; ++group)
-                {
-                    std::size_t const src_group_size = groups[group].size;
-                    std::size_t const src_left = groups[group].left;
-                    for (std::size_t s = 0; s != src_group_size; ++s)
-                    {
-                        scatter_input[j][src_left + s] =
-                            HPX_MOVE(received[group][s * my_group_size + j]);
-                    }
-                }
-            }
+            detail::ragged_rows<T> received = received_future.get();
 
-            return detail::subtree_scatter_at_top_rep(
-                communicators, HPX_MOVE(scatter_input), second_gen);
+            return detail::subtree_scatter_at_top_rep(communicators,
+                HPX_MOVE(exchange).transpose(HPX_MOVE(received)), second_gen);
         }
         else
         {
@@ -626,7 +805,7 @@ namespace hpx::collectives {
             detail::subtree_send_to_top_rep(
                 communicators, HPX_MOVE(local_result), first_gen);
 
-            return detail::subtree_receive_from_top_rep<std::vector<T>>(
+            return detail::subtree_receive_from_top_rep<T>(
                 communicators, second_gen);
         }
     }

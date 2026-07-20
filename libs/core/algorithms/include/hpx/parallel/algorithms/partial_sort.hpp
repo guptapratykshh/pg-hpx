@@ -118,6 +118,7 @@ namespace hpx {
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
 #include <hpx/parallel/algorithms/detail/is_sorted.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/sort.hpp>
 #include <hpx/parallel/util/compare_projected.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
@@ -562,9 +563,9 @@ namespace hpx::parallel {
 namespace hpx {
 
     HPX_CXX_CORE_EXPORT inline constexpr struct partial_sort_t final
-      : hpx::detail::tag_parallel_algorithm<partial_sort_t>
+      : hpx::detail::tag_dispatch<partial_sort_t,
+            hpx::detail::tag_parallel_algorithm<partial_sort_t>>
     {
-    private:
         template <typename RandIter,
             typename Comp = hpx::parallel::detail::less>
         // clang-format off
@@ -576,8 +577,8 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend RandIter tag_fallback_invoke(hpx::partial_sort_t, RandIter first,
-            RandIter middle, RandIter last, Comp comp = Comp())
+        static RandIter invoke_default(
+            RandIter first, RandIter middle, RandIter last, Comp comp = Comp())
         {
             static_assert(std::random_access_iterator<RandIter>,
                 "Requires at least random access iterator.");
@@ -598,9 +599,8 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::partial_sort_t,
-            ExPolicy&& policy, RandIter first, RandIter middle, RandIter last,
-            Comp comp = Comp())
+        static decltype(auto) invoke_default(ExPolicy&& policy, RandIter first,
+            RandIter middle, RandIter last, Comp comp = Comp())
         {
             static_assert(std::random_access_iterator<RandIter>,
                 "Requires at least random access iterator.");

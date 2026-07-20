@@ -161,8 +161,7 @@ if(HPX_WITH_CXX17_STD_EXECUTION_POLICES)
   set(tests ${tests} foreach_std_policies)
 endif()
 
-set(tests
-    ${tests}
+set(sender_tests
     adjacentdifference_sender
     adjacentfind_sender
     all_of_sender
@@ -214,6 +213,8 @@ set(tests
     rotate_sender
     rotate_copy_sender
     search_sender
+    set_difference_sender
+    set_intersection_sender
     shift_left_sender
     shift_right_sender
     starts_with_sender
@@ -238,6 +239,8 @@ set(tests
     uninitialized_value_constructn_sender
     unique_sender
 )
+
+set(tests ${tests} ${sender_tests})
 
 foreach(test ${tests})
   set(sources ${test}.cpp)
@@ -267,20 +270,7 @@ foreach(test ${tests})
 endforeach()
 
 if(HPX_WITH_CXX_MODULES AND (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
-  foreach(
-    test
-    all_of_sender
-    any_of_sender
-    copyn_sender
-    findifnot_sender
-    generate_sender
-    is_sorted_sender
-    min_element_sender
-    move_sender
-    none_of_sender
-    reverse_copy_sender
-    transform_sender
-  )
+  foreach(test ${sender_tests})
     target_compile_definitions(
       ${test}_test PRIVATE HPX_HAVE_FORCE_NO_CXX_MODULES
     )

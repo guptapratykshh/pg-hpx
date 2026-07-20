@@ -26,7 +26,7 @@ namespace hpx {
     HPX_CXX_CORE_EXPORT enum class launch_policy : std::int8_t {
         async = 0x01,
         deferred = 0x02,
-        task = 0x04,    // see N3632
+        task = 0x04,    // same as async, but disables inline execution
         sync = 0x08,
         fork = 0x10,    // same as async, but forces continuation stealing
         apply = 0x20,
@@ -88,18 +88,20 @@ namespace hpx {
                 return hint_;
             }
 
-            void set_priority(threads::thread_priority const priority) noexcept
+            constexpr void set_priority(
+                threads::thread_priority const priority) noexcept
             {
                 priority_ = priority;
             }
 
-            void set_stacksize(
+            constexpr void set_stacksize(
                 threads::thread_stacksize const stacksize) noexcept
             {
                 stacksize_ = stacksize;
             }
 
-            void set_hint(threads::thread_schedule_hint const hint) noexcept
+            constexpr void set_hint(
+                threads::thread_schedule_hint const hint) noexcept
             {
                 hint_ = hint;
             }
@@ -151,15 +153,18 @@ namespace hpx {
                 policy_holder<D> const& p) noexcept;
 
             template <typename Left, typename Right>
-            friend policy_holder<Left> operator&=(policy_holder<Left>& lhs,
+            friend constexpr policy_holder<Left> operator&=(
+                policy_holder<Left>& lhs,
                 policy_holder<Right> const& rhs) noexcept;
 
             template <typename Left, typename Right>
-            friend policy_holder<Left> operator|=(policy_holder<Left>& lhs,
+            friend constexpr policy_holder<Left> operator|=(
+                policy_holder<Left>& lhs,
                 policy_holder<Right> const& rhs) noexcept;
 
             template <typename Left, typename Right>
-            friend policy_holder<Left> operator^=(policy_holder<Left>& lhs,
+            friend constexpr policy_holder<Left> operator^=(
+                policy_holder<Left>& lhs,
                 policy_holder<Right> const& rhs) noexcept;
 
         public:
@@ -262,6 +267,23 @@ namespace hpx {
             }
         };
 
+        struct task_policy : policy_holder<task_policy>
+        {
+            constexpr explicit task_policy(
+                threads::thread_priority const priority =
+                    threads::thread_priority::default_,
+                threads::thread_stacksize const stacksize =
+                    threads::thread_stacksize::default_,
+                threads::thread_schedule_hint const hint = {}) noexcept
+              : policy_holder<task_policy>(
+                    launch_policy::task, priority, stacksize, hint)
+            {
+                // explicitly disable inline execution
+                hint_.runs_as_child_mode(
+                    hpx::threads::thread_execution_hint::none);
+            }
+        };
+
         struct fork_policy : policy_holder<fork_policy>
         {
             constexpr explicit fork_policy(
@@ -321,9 +343,8 @@ namespace hpx {
         template <typename Pred>
         struct select_policy : policy_holder<select_policy<Pred>>
         {
-            template <typename F,
-                typename U = std::enable_if_t<
-                    !std::is_same_v<select_policy<Pred>, std::decay_t<F>>>>
+            template <typename F>
+                requires(!std::is_same_v<select_policy<Pred>, std::decay_t<F>>)
             explicit select_policy(F&& f,
                 threads::thread_priority priority =
                     threads::thread_priority::default_,
@@ -377,8 +398,7 @@ namespace hpx {
 
         ///////////////////////////////////////////////////////////////////////
         template <typename Left, typename Right>
-        constexpr inline policy_holder_base operator&(
-            policy_holder<Left> const& lhs,
+        constexpr policy_holder_base operator&(policy_holder<Left> const& lhs,
             policy_holder<Right> const& rhs) noexcept
         {
             return policy_holder_base(
@@ -388,8 +408,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        constexpr inline policy_holder_base operator|(
-            policy_holder<Left> const& lhs,
+        constexpr policy_holder_base operator|(policy_holder<Left> const& lhs,
             policy_holder<Right> const& rhs) noexcept
         {
             return policy_holder_base(
@@ -399,8 +418,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        constexpr inline policy_holder_base operator^(
-            policy_holder<Left> const& lhs,
+        constexpr policy_holder_base operator^(policy_holder<Left> const& lhs,
             policy_holder<Right> const& rhs) noexcept
         {
             return policy_holder_base(
@@ -410,7 +428,7 @@ namespace hpx {
         }
 
         template <typename Derived>
-        constexpr inline policy_holder<Derived> operator~(
+        constexpr policy_holder<Derived> operator~(
             policy_holder<Derived> const& p) noexcept
         {
             return policy_holder<Derived>(
@@ -419,7 +437,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        inline policy_holder<Left> operator&=(
+        constexpr policy_holder<Left> operator&=(
             policy_holder<Left>& lhs, policy_holder<Right> const& rhs) noexcept
         {
             lhs = policy_holder<Left>(lhs & rhs);
@@ -427,7 +445,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        inline policy_holder<Left> operator|=(
+        constexpr policy_holder<Left> operator|=(
             policy_holder<Left>& lhs, policy_holder<Right> const& rhs) noexcept
         {
             lhs = policy_holder<Left>(lhs | rhs);
@@ -435,7 +453,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        inline policy_holder<Left> operator^=(
+        constexpr policy_holder<Left> operator^=(
             policy_holder<Left>& lhs, policy_holder<Right> const& rhs) noexcept
         {
             lhs = policy_holder<Left>(lhs ^ rhs);
@@ -443,7 +461,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        constexpr inline bool operator==(policy_holder<Left> const& lhs,
+        constexpr bool operator==(policy_holder<Left> const& lhs,
             policy_holder<Right> const& rhs) noexcept
         {
             return static_cast<int>(lhs.policy()) ==
@@ -451,7 +469,7 @@ namespace hpx {
         }
 
         template <typename Left, typename Right>
-        constexpr inline bool operator!=(policy_holder<Left> const& lhs,
+        constexpr bool operator!=(policy_holder<Left> const& lhs,
             policy_holder<Right> const& rhs) noexcept
         {
             return !(lhs == rhs);
@@ -484,10 +502,18 @@ namespace hpx {
         }
         /// \endcond
 
-        /// Create a launch policy representing asynchronous execution
+        /// Create a launch policy representing asynchronous execution.
         constexpr launch(detail::async_policy const p) noexcept
           : detail::policy_holder<>{
                 launch_policy::async, p.priority(), p.stacksize(), p.hint()}
+        {
+        }
+
+        /// Create a launch policy representing asynchronous execution, but
+        /// disabled inline execution.
+        constexpr launch(detail::task_policy const p) noexcept
+          : detail::policy_holder<>{
+                launch_policy::task, p.priority(), p.stacksize(), p.hint()}
         {
         }
 
@@ -520,7 +546,7 @@ namespace hpx {
         {
         }
 
-        /// Create a launch policy representing fire and forget execution
+        /// Create a launch policy that is dynamically selected at runtime
         template <typename F>
         constexpr launch(detail::select_policy<F> const& p) noexcept
           : detail::policy_holder<>{
@@ -528,9 +554,8 @@ namespace hpx {
         {
         }
 
-        template <typename Launch,
-            typename Enable =
-                std::enable_if_t<hpx::traits::is_launch_policy_v<Launch>>>
+        template <typename Launch>
+            requires(hpx::traits::is_launch_policy_v<Launch>)
         constexpr launch(Launch l, threads::thread_priority const priority,
             threads::thread_stacksize const stacksize,
             threads::thread_schedule_hint const hint) noexcept
@@ -541,6 +566,7 @@ namespace hpx {
         ///////////////////////////////////////////////////////////////////////
         /// \cond NOINTERNAL
         using async_policy = detail::async_policy;
+        using task_policy = detail::task_policy;
         using fork_policy = detail::fork_policy;
         using sync_policy = detail::sync_policy;
         using deferred_policy = detail::deferred_policy;
@@ -553,7 +579,11 @@ namespace hpx {
         /// Predefined launch policy representing asynchronous execution
         HPX_CORE_EXPORT static detail::async_policy const async;
 
-        /// Predefined launch policy representing asynchronous execution.The
+        /// Predefined launch policy representing asynchronous execution with
+        /// disabled inline execution
+        HPX_CORE_EXPORT static detail::task_policy const task;
+
+        /// Predefined launch policy representing asynchronous execution. The
         /// new thread is executed in a preferred way
         HPX_CORE_EXPORT static detail::fork_policy const fork;
 

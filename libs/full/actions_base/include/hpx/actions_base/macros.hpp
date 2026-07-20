@@ -539,11 +539,17 @@
     HPX_DEFINE_PLAIN_DIRECT_ACTION_3(HPX_PP_EMPTY(), func, name)               \
     /**/
 
+#if defined(HPX_HAVE_CXX26_REFLECTION)
+#define HPX_DEFINE_PLAIN_DIRECT_ACTION_3(Prefix, func, name)                   \
+    Prefix using name = hpx::actions::reflect_direct_action<^^func>;           \
+    /**/
+#else
 #define HPX_DEFINE_PLAIN_DIRECT_ACTION_3(Prefix, func, name)                   \
     Prefix struct name                                                         \
       : hpx::actions::make_direct_action_t<decltype(&func), &func, name>       \
     {                                                                          \
     } /**/
+#endif
 
 /// \endcond
 

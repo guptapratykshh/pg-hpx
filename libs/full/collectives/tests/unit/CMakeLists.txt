@@ -36,12 +36,15 @@ if(HPX_WITH_NETWORKING)
       broadcast_direct
       concurrent_collectives
       exclusive_scan_
+      exclusive_scan_hierarchical
       exclusive_scan_sync
+      flattened_collective_payloads
       gather
       gather_hierarchical
       gather_sync
       hierarchical_flat_fallback
       inclusive_scan_
+      inclusive_scan_hierarchical
       inclusive_scan_sync
       reduce
       reduce_hierarchical
@@ -54,8 +57,13 @@ if(HPX_WITH_NETWORKING)
     set(${test}_PARAMETERS LOCALITIES 2)
   endforeach()
 
-  # The flat-vs-tree comparison needs a real tree: num_sites > arity (= 2).
-  set(hierarchical_flat_fallback_PARAMETERS LOCALITIES 3)
+  # Five localities with arity two force an uneven, three-level tree and a
+  # serialized intermediate payload hop.
+  set(flattened_collective_payloads_PARAMETERS LOCALITIES 5)
+
+  # The flat-vs-tree comparison needs a real tree. Five localities with arity
+  # two also exercises an uneven subtree with an intermediate payload hop.
+  set(hierarchical_flat_fallback_PARAMETERS LOCALITIES 5)
 endif()
 foreach(test ${tests})
   set(sources ${test}.cpp)

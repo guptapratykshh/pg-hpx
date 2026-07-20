@@ -1,4 +1,4 @@
-//  Copyright (c) 2015-2025 Hartmut Kaiser
+//  Copyright (c) 2015-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -390,8 +390,14 @@ namespace hpx::lcos::detail {
             std::unique_lock l(mtx_);
             if (state_.load(std::memory_order_relaxed) == empty)
             {
-                threads::thread_restart_state const reason = cond_.wait_until(
-                    l, abs_time, "future_data_base::wait_until", ec);
+                // stop waiting if the future becomes ready
+                hpx::move_only_function<bool()> wait_cond = [this]() {
+                    return state_.load(std::memory_order_acquire) != empty;
+                };
+
+                threads::thread_restart_state const reason =
+                    cond_.wait_until(l, abs_time, HPX_MOVE(wait_cond),
+                        "future_data_base::wait_until", ec);
                 if (ec)
                 {
                     return hpx::future_status::uninitialized;

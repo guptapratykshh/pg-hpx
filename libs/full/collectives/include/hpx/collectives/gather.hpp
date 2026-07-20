@@ -412,6 +412,7 @@ namespace hpx { namespace collectives {
 
 #include <hpx/collectives/argument_types.hpp>
 #include <hpx/collectives/create_communicator.hpp>
+#include <hpx/collectives/detail/flattened_data.hpp>
 #include <hpx/collectives/detail/hierarchical_helpers.hpp>
 
 #include <cstddef>
@@ -442,7 +443,12 @@ namespace hpx::traits {
             std::size_t generation,
             hpx::collectives::detail::generation_mode num_generations, T&& t)
         {
-            return communicator.template handle_data<std::decay_t<T>>(
+            using payload_type = std::decay_t<T>;
+            using result_type = typename Result::result_type;
+            static_assert(std::is_constructible_v<result_type,
+                std::vector<payload_type>&&>);
+
+            return communicator.template handle_data<payload_type>(
                 communication::communicator_data<
                     communication::gather_tag>::name(),
                 which, generation,
@@ -451,7 +457,9 @@ namespace hpx::traits {
                     data[which] = HPX_FORWARD(T, t);
                 },
                 // finalizer (invoked once after all data has been received)
-                [](auto& data, bool&, std::size_t) { return HPX_MOVE(data); },
+                [](auto& data, bool&, std::size_t) -> result_type {
+                    return result_type(HPX_MOVE(data));
+                },
                 num_generations);
         }
 
@@ -460,7 +468,8 @@ namespace hpx::traits {
             std::size_t generation,
             hpx::collectives::detail::generation_mode num_generations, T&& t)
         {
-            return communicator.template handle_data<std::decay_t<T>>(
+            using payload_type = std::decay_t<T>;
+            return communicator.template handle_data<payload_type>(
                 communication::communicator_data<
                     communication::gather_tag>::name(),
                 which, generation,
@@ -484,12 +493,14 @@ namespace hpx::collectives {
         // step. The public overload forwards with single_step; the hierarchical
         // gather_here walks its sub-communicators through this entry with the
         // mapped step.
-        template <typename T>
-        hpx::future<std::vector<std::decay_t<T>>> gather_here(communicator fid,
-            T&& local_result, this_site_arg this_site,
-            generation_arg generation, generation_mode num_generations)
+        template <typename Result, typename T>
+        hpx::future<Result> gather_here_impl(communicator fid, T&& local_result,
+            this_site_arg this_site, generation_arg generation,
+            generation_mode num_generations)
         {
-            using arg_type = std::decay_t<T>;
+            using payload_type = std::decay_t<T>;
+            static_assert(
+                std::is_constructible_v<Result, std::vector<payload_type>&&>);
 
             if (this_site.is_default())
             {
@@ -497,10 +508,9 @@ namespace hpx::collectives {
             }
             if (generation == 0)
             {
-                return hpx::make_exceptional_future<std::vector<arg_type>>(
-                    HPX_GET_EXCEPTION(hpx::error::bad_parameter,
-                        "hpx::collectives::gather_here",
-                        "the generation number shouldn't be zero"));
+                return hpx::make_exceptional_future<Result>(HPX_GET_EXCEPTION(
+                    hpx::error::bad_parameter, "hpx::collectives::gather_here",
+                    "the generation number shouldn't be zero"));
             }
 
             // Handle operation right away if there is only one value.
@@ -508,30 +518,29 @@ namespace hpx::collectives {
             {
                 if (this_site != comm_site)
                 {
-                    return hpx::make_exceptional_future<std::vector<arg_type>>(
+                    return hpx::make_exceptional_future<Result>(
                         HPX_GET_EXCEPTION(hpx::error::bad_parameter,
                             "hpx::collectives::gather_here",
                             "the local site should be zero if only one site is "
                             "involved"));
                 }
 
-                std::vector<arg_type> result;
-                result.emplace_back(HPX_FORWARD(T, local_result));
-                return hpx::make_ready_future(HPX_MOVE(result));
+                std::vector<payload_type> values;
+                values.emplace_back(HPX_FORWARD(T, local_result));
+                return hpx::make_ready_future(Result(HPX_MOVE(values)));
             }
 
             auto gather_here_data =
                 [local_result = HPX_FORWARD(T, local_result), this_site,
-                    generation, num_generations](communicator&& c) mutable
-                -> hpx::future<std::vector<arg_type>> {
+                    generation, num_generations](
+                    communicator&& c) mutable -> hpx::future<Result> {
                 using action_type =
                     communicator_server::communication_get_direct_action<
-                        traits::communication::gather_tag,
-                        hpx::future<std::vector<arg_type>>, generation_mode,
-                        arg_type>;
+                        traits::communication::gather_tag, hpx::future<Result>,
+                        generation_mode, payload_type>;
 
                 // explicitly unwrap returned future
-                hpx::future<std::vector<arg_type>> result =
+                hpx::future<Result> result =
                     hpx::async(action_type(), c, this_site, generation,
                         num_generations, HPX_MOVE(local_result));
 
@@ -556,48 +565,10 @@ namespace hpx::collectives {
         T&& local_result, this_site_arg this_site = this_site_arg(),
         generation_arg generation = generation_arg())
     {
-        return detail::gather_here(HPX_MOVE(fid), HPX_FORWARD(T, local_result),
-            this_site, generation, detail::generation_mode::single_step);
+        return detail::gather_here_impl<std::vector<std::decay_t<T>>>(
+            HPX_MOVE(fid), HPX_FORWARD(T, local_result), this_site, generation,
+            detail::generation_mode::single_step);
     }
-
-    ////////////////////////////////////////////////////////////////////////////
-    namespace detail {
-
-        template <typename T>
-        std::vector<T> gather_data(std::vector<std::vector<T>>&& data)
-        {
-            if (data.size() == 1)
-            {
-                return HPX_MOVE(data.front());
-            }
-
-            std::size_t total_size = 0;
-            for (auto const& row : data)
-            {
-                total_size += row.size();
-            }
-
-            std::vector<T> result;
-            result.reserve(total_size);
-            for (auto&& row : data)
-            {
-                result.insert(result.end(),
-                    std::make_move_iterator(row.begin()),
-                    std::make_move_iterator(row.end()));
-            }
-            return result;
-        }
-
-        template <typename T>
-        hpx::future<std::vector<T>> gather_data(
-            hpx::future<std::vector<std::vector<T>>>&& f)
-        {
-            return hpx::make_future<std::vector<T>>(
-                HPX_MOVE(f), [](std::vector<std::vector<T>>&& data) {
-                    return gather_data(HPX_MOVE(data));
-                });
-        }
-    }    // namespace detail
 
     namespace detail {
 
@@ -616,20 +587,52 @@ namespace hpx::collectives {
                 this_site = agas::get_locality_id();
             }
 
+            if (auto const error =
+                    validate_hierarchical_communicator(communicators, this_site,
+                        "hpx::collectives::gather_here (hierarchical)"))
+            {
+                return hpx::make_exceptional_future<
+                    std::vector<std::decay_t<T>>>(error);
+            }
+
+            if (auto const error = validate_hierarchical_root_caller(this_site,
+                    "hpx::collectives::gather_here (hierarchical)",
+                    "gather_here"))
+            {
+                return hpx::make_exceptional_future<
+                    std::vector<std::decay_t<T>>>(error);
+            }
+
+            if (!is_valid_hierarchical_run_generation(
+                    generation, num_generations))
+            {
+                return hpx::make_exceptional_future<
+                    std::vector<std::decay_t<T>>>(
+                    HPX_GET_EXCEPTION(hpx::error::bad_parameter,
+                        "hpx::collectives::gather_here (hierarchical)",
+                        "the generation number is too large for the internal "
+                        "generation mapping"));
+            }
+
             auto const [run_gen, run_step] =
                 hierarchical_run_params(generation, num_generations);
 
-            std::vector<std::decay_t<T>> result;
-            result.emplace_back(HPX_FORWARD(T, local_result));
+            using value_type = std::decay_t<T>;
+            uniform_rows<value_type> result(HPX_FORWARD(T, local_result));
             for (std::size_t i = communicators.size() - 1; i != 0; --i)
             {
-                result = gather_data(gather_here(communicators.get(i),
-                    HPX_MOVE(result), this_site_arg(0), run_gen, run_step)
-                        .get());
+                result = gather_here_impl<uniform_rows<value_type>>(
+                    communicators.get(i), HPX_MOVE(result), this_site_arg(0),
+                    run_gen, run_step)
+                             .get();
             }
 
-            return gather_data(gather_here(communicators.get(0),
-                HPX_MOVE(result), this_site_arg(0), run_gen, run_step));
+            return hpx::make_future<std::vector<value_type>>(
+                gather_here_impl<uniform_rows<value_type>>(communicators.get(0),
+                    HPX_MOVE(result), this_site_arg(0), run_gen, run_step),
+                [](uniform_rows<value_type>&& data) {
+                    return HPX_MOVE(data).unwrap_values();
+                });
         }
     }    // namespace detail
 
@@ -779,17 +782,42 @@ namespace hpx::collectives {
                 this_site = agas::get_locality_id();
             }
 
+            if (auto const error =
+                    validate_hierarchical_communicator(communicators, this_site,
+                        "hpx::collectives::gather_there (hierarchical)"))
+            {
+                return hpx::make_exceptional_future<void>(error);
+            }
+
+            if (auto const error = validate_hierarchical_non_root_caller(
+                    this_site, "hpx::collectives::gather_there (hierarchical)",
+                    "gather_here"))
+            {
+                return hpx::make_exceptional_future<void>(error);
+            }
+
             // See gather_here above for the internal generation mapping.
+            if (!is_valid_hierarchical_run_generation(
+                    generation, num_generations))
+            {
+                return hpx::make_exceptional_future<void>(
+                    HPX_GET_EXCEPTION(hpx::error::bad_parameter,
+                        "hpx::collectives::gather_there (hierarchical)",
+                        "the generation number is too large for the internal "
+                        "generation mapping"));
+            }
+
             auto const [run_gen, run_step] =
                 hierarchical_run_params(generation, num_generations);
 
-            std::vector<std::decay_t<T>> data;
-            data.emplace_back(HPX_FORWARD(T, local_result));
+            using value_type = std::decay_t<T>;
+            uniform_rows<value_type> data(HPX_FORWARD(T, local_result));
             for (std::size_t i = communicators.size() - 1; i != 0; --i)
             {
-                data = gather_data(gather_here(communicators.get(i),
-                    HPX_MOVE(data), this_site_arg(0), run_gen, run_step)
-                        .get());
+                data = gather_here_impl<uniform_rows<value_type>>(
+                    communicators.get(i), HPX_MOVE(data), this_site_arg(0),
+                    run_gen, run_step)
+                           .get();
             }
 
             return gather_there(communicators.get(0), HPX_MOVE(data),
@@ -824,10 +852,19 @@ namespace hpx::collectives {
         generation_arg const generation = generation_arg(),
         root_site_arg const root_site = root_site_arg())
     {
-        HPX_ASSERT(this_site != root_site);
+        this_site_arg const effective_site =
+            detail::resolve_this_site(this_site);
+
+        if (auto const error =
+                detail::validate_site_differs_from_root(effective_site,
+                    root_site, "hpx::collectives::gather_there", "sending"))
+        {
+            return hpx::make_exceptional_future<void>(error);
+        }
+
         return gather_there(create_communicator(basename, num_sites_arg(),
-                                this_site, generation, root_site),
-            HPX_FORWARD(T, local_result), this_site);
+                                effective_site, generation, root_site),
+            HPX_FORWARD(T, local_result), effective_site);
     }
 
     ///////////////////////////////////////////////////////////////////////////
@@ -859,10 +896,8 @@ namespace hpx::collectives {
         generation_arg const generation = generation_arg(),
         root_site_arg const root_site = root_site_arg())
     {
-        HPX_ASSERT(this_site != root_site);
-        gather_there(create_communicator(basename, num_sites_arg(), this_site,
-                         generation, root_site),
-            HPX_FORWARD(T, local_result), this_site)
+        gather_there(basename, HPX_FORWARD(T, local_result), this_site,
+            generation, root_site)
             .get();
     }
 }    // namespace hpx::collectives

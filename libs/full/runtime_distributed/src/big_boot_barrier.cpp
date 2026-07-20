@@ -605,8 +605,14 @@ namespace hpx::agas {
         // store number of initial localities
         cfg.set_num_localities(header.num_localities);
 
+        // prevent adding a core-offset if the user provided explicit affinity
+        // bindings
+        bool const explicit_core_assignment =
+            cfg.get_entry("hpx.bind-provided", "0") != "0";
+
         // store number of used cores by other localities
-        cfg.set_first_used_core(header.used_cores);
+        cfg.set_first_used_core(
+            explicit_core_assignment ? 0 : header.used_cores);
         rt.assign_cores();
 
         // pre-cache all known locality endpoints in local AGAS

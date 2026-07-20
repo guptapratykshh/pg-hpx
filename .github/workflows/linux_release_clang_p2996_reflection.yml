@@ -47,11 +47,12 @@ jobs:
       run: |
           cmake --build build --target all
           cmake --build build --target tests.unit.modules.serialization
+          cmake --build build --target tests.unit.modules.actions_base
     - name: Test
       shell: bash
       run: |
           cd build
           ctest \
             --output-on-failure \
-            --tests-regex "tests.unit.modules.serialization"
+            --tests-regex "tests.unit.modules.serialization|tests.unit.modules.actions_base"
            

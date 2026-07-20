@@ -10,7 +10,6 @@
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/execution.hpp>
 #include <hpx/modules/execution_base.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/testing.hpp>
 
 #include <atomic>
@@ -290,7 +289,7 @@ struct callback_receiver
     template <typename... Ts>
     void set_value(Ts&&... ts) && noexcept
     {
-        HPX_INVOKE(f, std::forward<Ts>(ts)...);
+        std::invoke(f, std::forward<Ts>(ts)...);
         set_value_called = true;
     }
 };
@@ -311,7 +310,7 @@ struct error_callback_receiver
     template <typename E>
     void set_error(E&& e) && noexcept
     {
-        HPX_INVOKE(f, std::forward<E>(e));
+        std::invoke(f, std::forward<E>(e));
         set_error_called = true;
     }
 
@@ -365,7 +364,7 @@ struct void_callback_helper
     template <typename T>
     void operator()(T&& t)
     {
-        HPX_INVOKE(std::move(f), std::forward<T>(t));
+        std::invoke(std::move(f), std::forward<T>(t));
     }
 };
 
@@ -549,11 +548,9 @@ struct custom_sender_tag_invoke
     };
 
     template <typename R>
-    friend operation_state<R> tag_invoke(
-        hpx::execution::experimental::connect_t, custom_sender_tag_invoke&&,
-        R&& r)
+    auto connect(R&& r) && noexcept
     {
-        return {std::forward<R>(r)};
+        return operation_state<R>{std::forward<R>(r)};
     }
 
     template <typename Self, typename... Env>
@@ -610,11 +607,10 @@ struct custom_sender
     };
 
     template <typename R>
-    friend auto tag_invoke(
-        hpx::execution::experimental::connect_t, custom_sender&& s, R&& r)
+    auto connect(R&& r) && noexcept
     {
-        s.connect_called = true;
-        return operation_state<R>{s.start_called, std::forward<R>(r)};
+        connect_called = true;
+        return operation_state<R>{start_called, std::forward<R>(r)};
     }
 };
 
@@ -677,11 +673,10 @@ struct custom_sender_multi_tuple
     };
 
     template <typename R>
-    friend auto tag_invoke(hpx::execution::experimental::connect_t,
-        custom_sender_multi_tuple&& s, R&& r)
+    auto connect(R&& r) && noexcept
     {
-        s.connect_called = true;
-        return operation_state<R>{s.start_called, std::forward<R>(r)};
+        connect_called = true;
+        return operation_state<R>{start_called, std::forward<R>(r)};
     }
 };
 
@@ -727,12 +722,11 @@ struct custom_typed_sender
     };
 
     template <typename R>
-    friend auto tag_invoke(
-        hpx::execution::experimental::connect_t, custom_typed_sender&& s, R&& r)
+    auto connect(R&& r) && noexcept
     {
-        s.connect_called = true;
+        connect_called = true;
         return operation_state<R>{
-            std::move(s.x), s.start_called, std::forward<R>(r)};
+            std::move(x), start_called, std::forward<R>(r)};
     }
 
     template <typename Self, typename... Env>
@@ -950,8 +944,7 @@ namespace my_namespace {
             };
 
             template <typename R>
-            friend auto tag_invoke(
-                hpx::execution::experimental::connect_t, my_sender&&, R&& r)
+            auto connect(R&& r) && noexcept
             {
                 return operation_state<R>{std::forward<R>(r)};
             }
@@ -1003,10 +996,9 @@ namespace my_namespace {
         };
 
         template <typename R>
-        friend operation_state<R> tag_invoke(
-            hpx::execution::experimental::connect_t, my_sender, R&& r)
+        operation_state<R> connect(R&& r) && noexcept
         {
-            return {std::forward<R>(r)};
+            return operation_state<R>{std::forward<R>(r)};
         }
 
         template <typename Self, typename... Env>

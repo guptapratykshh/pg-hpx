@@ -847,7 +847,7 @@ namespace hpx::threads::policies {
         void move_work_items_from(thread_queue* src, std::int64_t count)
         {
             thread_description_ptr trd;
-            while (src->work_items_.pop(trd))
+            while (src->work_items_.pop(trd, true))
             {
                 --src->work_items_count_.data_;
 
@@ -872,7 +872,7 @@ namespace hpx::threads::policies {
         void move_task_items_from(thread_queue* src, std::int64_t count)
         {
             task_description task;
-            while (src->new_tasks_.pop(task))
+            while (src->new_tasks_.pop(task, true))
             {
 #ifdef HPX_HAVE_THREAD_QUEUE_WAITTIME
                 if (get_maintain_queue_wait_times_enabled())

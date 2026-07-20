@@ -12,12 +12,18 @@
 
 #include <hpx/assert.hpp>
 #include <hpx/collectives/argument_types.hpp>
+#include <hpx/modules/functional.hpp>
 
-#include <algorithm>
 #include <cstddef>
-#include <iterator>
+#include <exception>
 #include <limits>
+#include <type_traits>
+#include <utility>
 #include <vector>
+
+namespace hpx::collectives {
+    struct hierarchical_communicator;
+}
 
 namespace hpx::collectives::detail {
 
@@ -36,7 +42,46 @@ namespace hpx::collectives::detail {
         generation_arg second;
     };
 
-    [[nodiscard]] inline bool is_valid_hierarchical_phase_generation(
+    [[nodiscard]] HPX_EXPORT std::exception_ptr
+    validate_hierarchical_communicator(
+        hierarchical_communicator const& communicators, this_site_arg this_site,
+        char const* operation);
+
+    // The tree hardcodes site 0 as the root at every level, so the root-side
+    // entry points (broadcast_to, gather_here, reduce_here, scatter_to) may
+    // only be called from site 0, and the non-root entry points only from the
+    // other sites. `root_operation` names the root-side operation for the
+    // resulting error message.
+    [[nodiscard]] HPX_EXPORT std::exception_ptr
+    validate_hierarchical_root_caller(this_site_arg this_site,
+        char const* operation, char const* root_operation);
+
+    [[nodiscard]] HPX_EXPORT std::exception_ptr
+    validate_hierarchical_non_root_caller(this_site_arg this_site,
+        char const* operation, char const* root_operation);
+
+    // A non-zero root site is not supported by any of the hierarchical
+    // implementations (the tree designates site 0 as the root).
+    // `operation_name` is the plain operation name (e.g. "barrier") used in
+    // the resulting error message.
+    [[nodiscard]] HPX_EXPORT std::exception_ptr validate_hierarchical_root_site(
+        root_site_arg root_site, char const* operation,
+        char const* operation_name);
+
+    template <typename ValueType, typename Data>
+    constexpr decltype(auto) handle_bool(Data&& data) noexcept
+    {
+        if constexpr (std::is_same_v<ValueType, bool>)
+        {
+            return static_cast<bool>(data);
+        }
+        else
+        {
+            return HPX_FORWARD(Data, data);
+        }
+    }
+
+    [[nodiscard]] constexpr bool is_valid_hierarchical_phase_generation(
         generation_arg const generation) noexcept
     {
         return !generation.is_default() && generation != 0 &&
@@ -44,7 +89,22 @@ namespace hpx::collectives::detail {
             (std::numeric_limits<std::size_t>::max)() / 2;
     }
 
-    inline hierarchical_phase_generation_pair hierarchical_phase_generations(
+    [[nodiscard]] constexpr bool is_valid_hierarchical_run_generation(
+        generation_arg const generation,
+        generation_mode const num_generations) noexcept
+    {
+        if (generation.is_default() || generation == 0)
+        {
+            return true;
+        }
+
+        std::size_t const step = static_cast<std::size_t>(num_generations);
+        HPX_ASSERT(step != 0);
+        return static_cast<std::size_t>(generation) <=
+            (std::numeric_limits<std::size_t>::max)() / step;
+    }
+
+    constexpr hierarchical_phase_generation_pair hierarchical_phase_generations(
         generation_arg const generation) noexcept
     {
         HPX_ASSERT(is_valid_hierarchical_phase_generation(generation));
@@ -62,9 +122,12 @@ namespace hpx::collectives::detail {
     // requires explicit, consecutive generations). Generation 0 is also passed
     // through so the downstream flat operation rejects it with bad_parameter
     // rather than the mapping silently wrapping it onto the default sentinel.
-    inline hierarchical_run hierarchical_run_params(
+    constexpr hierarchical_run hierarchical_run_params(
         generation_arg const generation, generation_mode const num_generations)
     {
+        HPX_ASSERT(
+            is_valid_hierarchical_run_generation(generation, num_generations));
+
         if (generation.is_default() || generation == 0)
         {
             return {generation, generation_mode::single_step};
@@ -87,77 +150,104 @@ namespace hpx::collectives::detail {
             num_generations};
     }
 
-    HPX_CXX_EXPORT struct top_level_group
-    {
-        std::size_t left;
-        std::size_t right;
-        std::size_t size;
-    };
+    // The topology helpers below are deliberately the only entities in this
+    // file that carry HPX_CXX_EXPORT: the unit tests (hierarchical_helpers,
+    // subtree_gather_scatter) call them directly, and with C++20 modules
+    // enabled those tests consume this header through `import HPX.Full;`
+    // (via the generated hpx/modules/collectives.hpp), so anything named
+    // directly by an importer must be module-exported. Everything else here
+    // is referenced only from within the module purview (reachability is
+    // sufficient for the templates and validation helpers) and intentionally
+    // stays unexported.
+    HPX_CXX_EXPORT [[nodiscard]] HPX_EXPORT std::size_t
+    get_top_level_group_count(std::size_t num_sites, std::size_t arity);
 
-    // Compute the top-level partition of [0, num_sites) into `arity` groups.
-    // Uses the same division logic as recursively_fill_communicators:
-    // first (num_sites % arity) groups get ceil(num_sites/arity) sites,
-    // the rest get floor(num_sites/arity).
-    HPX_CXX_EXPORT inline std::vector<top_level_group> get_top_level_groups(
-        std::size_t num_sites, std::size_t arity)
-    {
-        HPX_ASSERT(arity != 0);
+    HPX_CXX_EXPORT [[nodiscard]] HPX_EXPORT std::size_t
+    get_top_level_group_left(
+        std::size_t group, std::size_t num_sites, std::size_t arity);
 
-        if (arity > num_sites)
+    HPX_CXX_EXPORT [[nodiscard]] HPX_EXPORT std::size_t
+    get_top_level_group_size(
+        std::size_t group, std::size_t num_sites, std::size_t arity);
+
+    HPX_CXX_EXPORT [[nodiscard]] HPX_EXPORT std::ptrdiff_t classify_site(
+        std::size_t this_site, std::size_t num_sites, std::size_t arity);
+
+    HPX_CXX_EXPORT [[nodiscard]] HPX_EXPORT bool is_top_level_rep(
+        std::size_t this_site, std::size_t num_sites, std::size_t arity);
+
+    // Overload for callers that have already classified this_site; avoids
+    // repeating the classify_site scan. Only referenced from within the
+    // module purview, hence no HPX_CXX_EXPORT.
+    [[nodiscard]] HPX_EXPORT bool is_top_level_rep(std::ptrdiff_t group,
+        std::size_t this_site, std::size_t num_sites, std::size_t arity);
+
+    template <typename T, typename F>
+    std::vector<T> make_inclusive_scan_results(std::vector<T>&& values, F&& op)
+    {
+        std::vector<T> results;
+        results.reserve(values.size());
+
+        auto it = values.begin();
+        if (it == values.end())
         {
-            arity = num_sites;
+            return results;
         }
 
-        std::size_t const division_steps = num_sites / arity;
-        std::size_t const remainder = num_sites % arity;
+        T prefix = handle_bool<T>(HPX_MOVE(*it));
+        results.emplace_back(prefix);
 
-        std::vector<top_level_group> groups;
-        groups.reserve(arity);
-
-        std::size_t offset = 0;
-        for (std::size_t i = 0; i != arity; ++i)
+        for (++it; it != values.end(); ++it)
         {
-            std::size_t const group_size =
-                division_steps + (i < remainder ? 1 : 0);
-
-            std::size_t const left = offset;
-            std::size_t const right = left + group_size - 1;
-            groups.push_back(top_level_group{left, right, group_size});
-
-            offset += group_size;
+            prefix = HPX_INVOKE(
+                op, handle_bool<T>(HPX_MOVE(prefix)), handle_bool<T>(*it));
+            results.emplace_back(prefix);
         }
 
-        return groups;
+        return results;
     }
 
-    // Return the index of the top-level group that contains `this_site`,
-    // or -1 if there is none. Groups are sorted by left boundary, so we use
-    // std::lower_bound. The return type is signed so the -1 sentinel and the
-    // std::distance result need no casts.
-    HPX_CXX_EXPORT inline std::ptrdiff_t classify_site(
-        std::size_t this_site, std::vector<top_level_group> const& groups)
+    template <typename T, typename F>
+    std::vector<T> make_exclusive_scan_results(std::vector<T>&& values, F&& op)
     {
-        auto const it = std::lower_bound(groups.begin(), groups.end(),
-            this_site, [](top_level_group const& g, std::size_t site) {
-                return g.right < site;
-            });
+        std::vector<T> results;
+        results.reserve(values.size());
 
-        if (it != groups.end() && this_site >= it->left)
+        auto it = values.begin();
+        if (it == values.end())
         {
-            return std::distance(groups.begin(), it);
+            return results;
         }
 
-        return -1;
+        results.emplace_back(T{});
+
+        T prefix = handle_bool<T>(HPX_MOVE(*it));
+        for (++it; it != values.end(); ++it)
+        {
+            results.emplace_back(prefix);
+            prefix = HPX_INVOKE(
+                op, handle_bool<T>(HPX_MOVE(prefix)), handle_bool<T>(*it));
+        }
+
+        return results;
     }
 
-    // Return true if `this_site` is the leftmost site (representative)
-    // of its top-level group.
-    HPX_CXX_EXPORT inline bool is_top_level_rep(
-        std::size_t this_site, std::size_t num_sites, std::size_t arity)
+    template <typename T, typename U, typename F>
+    std::vector<T> make_exclusive_scan_results(
+        std::vector<T>&& values, U&& init, F&& op)
     {
-        auto const groups = get_top_level_groups(num_sites, arity);
-        auto const g = classify_site(this_site, groups);
-        return g != -1 && this_site == groups[g].left;
+        std::vector<T> results;
+        results.reserve(values.size());
+
+        T prefix = handle_bool<T>(static_cast<T>(HPX_FORWARD(U, init)));
+        for (auto&& value : values)
+        {
+            results.emplace_back(prefix);
+            prefix = HPX_INVOKE(
+                op, handle_bool<T>(HPX_MOVE(prefix)), handle_bool<T>(value));
+        }
+
+        return results;
     }
 
 }    // namespace hpx::collectives::detail

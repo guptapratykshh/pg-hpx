@@ -49,13 +49,8 @@ namespace hpx::mpi::experimental {
         // owned by the polling driver until `MPI_Test*` reports completion.
         //
         // Contract:
-        //   * `Ts...` must be passed by the caller in the same shape they
-        //     were forwarded into the user-supplied MPI function. The
-        //     lambda's pack-capture moves them once into `keep_alive`; if
-        //     the caller has already moved them, we'd capture moved-from
-        //     state. Callers in this file (`transform_mpi_receiver`) pass
-        //     them unforwarded into `f` and then forward into this helper
-        //     to satisfy the single-move invariant.
+        //   * `Ts...` are captured by the callback to keep the upstream
+        //     sender values alive until the MPI request completes.
         //   * The lambda fires on the polling thread (inside `poll()` in
         //     `mpi_future.cpp`), not on the receiver's preferred completion
         //     scheduler. Receivers must be safe to invoke on that thread.
@@ -140,18 +135,18 @@ namespace hpx::mpi::experimental {
                 hpx::execution::experimental::set_stopped(HPX_MOVE(r));
             }
 
-            template <typename... Ts,
-                typename = std::enable_if_t<
-                    hpx::is_invocable_v<F, Ts..., MPI_Request*>>>
+            template <typename... Ts>
+                requires(hpx::is_invocable_v<F &&, Ts && ..., MPI_Request*>)
             void set_value(Ts&&... ts) && noexcept
             {
                 hpx::detail::try_catch_exception_ptr(
                     [&]() {
-                        if constexpr (std::is_void_v<util::invoke_result_t<F,
-                                          Ts..., MPI_Request*>>)
+                        if constexpr (std::is_void_v<util::invoke_result_t<F&&,
+                                          Ts&&..., MPI_Request*>>)
                         {
                             MPI_Request request;
-                            HPX_INVOKE(f, ts..., &request);
+                            HPX_INVOKE(
+                                HPX_MOVE(f), HPX_FORWARD(Ts, ts)..., &request);
                             // When the return type is void, there is no value
                             // to forward to the receiver
                             set_value_request_callback_void(
@@ -161,12 +156,9 @@ namespace hpx::mpi::experimental {
                         {
                             MPI_Request request;
                             // When the return type is non-void, we have to
-                            // forward the value to the receiver. Pass `ts...`
-                            // unforwarded into `f` so the same arguments can
-                            // be moved once into the keep-alive callback
-                            // below; this matches the void branch above and
-                            // avoids a double-move when `Ts...` are rvalues.
-                            auto&& result = HPX_INVOKE(f, ts..., &request);
+                            // forward the value to the receiver.
+                            auto&& result = HPX_INVOKE(
+                                HPX_MOVE(f), HPX_FORWARD(Ts, ts)..., &request);
                             set_value_request_callback_non_void(request,
                                 HPX_MOVE(r), HPX_MOVE(result),
                                 HPX_FORWARD(Ts, ts)...);
@@ -193,11 +185,12 @@ namespace hpx::mpi::experimental {
                 template <typename... Args>
                 consteval auto operator()() const noexcept
                 {
-                    static_assert(hpx::is_invocable_v<F, Args..., MPI_Request*>,
+                    static_assert(
+                        hpx::is_invocable_v<F&&, Args&&..., MPI_Request*>,
                         "F not invocable with the value_types specified.");
 
-                    using result_type =
-                        hpx::util::invoke_result_t<F, Args..., MPI_Request*>;
+                    using result_type = hpx::util::invoke_result_t<F&&,
+                        Args&&..., MPI_Request*>;
 
                     if constexpr (std::is_void_v<result_type>)
                     {

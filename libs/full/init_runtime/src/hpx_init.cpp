@@ -937,6 +937,7 @@ namespace hpx {
                 }
                 catch (hpx::exception const& e)
                 {
+                    resource::detail::delete_partitioner();
                     std::cerr << "hpx::init: hpx::exception caught: "
                               << hpx::get_error_what(e) << "\n";
                     return -1;
@@ -989,6 +990,7 @@ namespace hpx {
             }
             catch (detail::command_line_error const& e)
             {
+                resource::detail::delete_partitioner();
                 std::cerr << "hpx::init: std::exception caught: " << e.what()
                           << "\n";
                 return -1;
