@@ -78,6 +78,37 @@ namespace hpx::execution::experimental::detail {
         }
 
     private:
+        void complete_receiver()
+        {
+            if (future_.has_value())
+            {
+                if constexpr (std::is_void_v<result_type>)
+                {
+                    hpx::execution::experimental::set_value(
+                        HPX_MOVE(receiver_));
+                }
+                else
+                {
+                    hpx::execution::experimental::set_value(
+                        HPX_MOVE(receiver_), future_.get());
+                }
+            }
+            else if (future_.has_exception())
+            {
+                hpx::execution::experimental::set_error(
+                    HPX_MOVE(receiver_), future_.get_exception_ptr());
+            }
+        }
+
+        void complete_receiver_noexcept() noexcept
+        {
+            hpx::detail::try_catch_exception_ptr([&]() { complete_receiver(); },
+                [&](std::exception_ptr ep) {
+                    hpx::execution::experimental::set_error(
+                        HPX_MOVE(receiver_), HPX_MOVE(ep));
+                });
+        }
+
         void start_helper() & noexcept
         {
             hpx::detail::try_catch_exception_ptr(
@@ -91,44 +122,22 @@ namespace hpx::execution::experimental::detail {
                             "the future has no valid shared state");
                     }
 
-                    auto on_completed = [this]() mutable {
-                        if (future_.has_value())
-                        {
-                            if constexpr (std::is_void_v<result_type>)
-                            {
-                                hpx::execution::experimental::set_value(
-                                    HPX_MOVE(receiver_));
-                            }
-                            else
-                            {
-                                hpx::execution::experimental::set_value(
-                                    HPX_MOVE(receiver_), future_.get());
-                            }
-                        }
-                        else if (future_.has_exception())
-                        {
-                            hpx::execution::experimental::set_error(
-                                HPX_MOVE(receiver_),
-                                future_.get_exception_ptr());
-                        }
-                    };
+                    if (state->is_ready(std::memory_order_relaxed))
+                    {
+                        complete_receiver();
+                        return;
+                    }
+
+                    state->execute_deferred();
 
                     if (!state->is_ready(std::memory_order_relaxed))
                     {
-                        state->execute_deferred();
-
-                        if (!state->is_ready(std::memory_order_relaxed))
-                        {
-                            state->set_on_completed(HPX_MOVE(on_completed));
-                        }
-                        else
-                        {
-                            on_completed();
-                        }
+                        state->set_on_completed(
+                            [this]() mutable { complete_receiver_noexcept(); });
                     }
                     else
                     {
-                        on_completed();
+                        complete_receiver();
                     }
                 },
                 [&](std::exception_ptr ep) {
@@ -139,6 +148,71 @@ namespace hpx::execution::experimental::detail {
 
         receiver_type receiver_;
         future_type future_;
+    };
+
+    template <typename Future, typename Scheduler>
+    struct future_sender_with_scheduler
+    {
+        using sender_concept = hpx::execution::experimental::sender_t;
+        using future_type = std::decay_t<Future>;
+        using scheduler_type = std::decay_t<Scheduler>;
+        using result_type =
+            typename hpx::traits::future_traits<future_type>::type;
+
+        future_type future_;
+        HPX_NO_UNIQUE_ADDRESS scheduler_type scheduler_;
+
+        struct env
+        {
+            scheduler_type scheduler_;
+
+            template <typename CPO>
+                requires(std::is_same_v<CPO,
+                             hpx::execution::experimental::set_value_t> ||
+                    std::is_same_v<CPO,
+                        hpx::execution::experimental::set_stopped_t>)
+            constexpr auto query(
+                hpx::execution::experimental::get_completion_scheduler_t<CPO>)
+                const noexcept
+            {
+                return scheduler_;
+            }
+
+            constexpr auto query(
+                hpx::execution::experimental::get_domain_t) const noexcept
+            {
+                return hpx::execution::experimental::get_domain(scheduler_);
+            }
+        };
+
+        using completion_signatures =
+            typename future_sender_completion_signatures<result_type>::type;
+
+        template <typename... Env>
+        constexpr auto get_completion_signatures(Env&&...) const noexcept
+            -> completion_signatures
+        {
+            return {};
+        }
+
+        constexpr env get_env() const noexcept
+        {
+            return {scheduler_};
+        }
+
+        template <typename Receiver>
+        auto connect(Receiver&& r) &&
+        {
+            return future_sender_operation_state<Receiver, future_type>{
+                HPX_FORWARD(Receiver, r), HPX_MOVE(future_)};
+        }
+
+        template <typename Receiver>
+        auto connect(Receiver&& r) &
+        {
+            return future_sender_operation_state<Receiver, future_type>{
+                HPX_FORWARD(Receiver, r), future_};
+        }
     };
 
     template <typename Future>
