@@ -219,10 +219,9 @@ namespace hpx::execution::experimental::detail {
             stopped_t<ValueTuple>>
             result;
 
-        void notify_all(std::unique_lock<hpx::spinlock> l) noexcept
+        void notify_all(std::unique_lock<hpx::spinlock> l)
         {
-            hpx::error_code ec(hpx::throwmode::lightweight);
-            cv.notify_all(HPX_MOVE(l), ec);
+            cv.notify_all(HPX_MOVE(l));
         }
 
         template <typename... Vs>
