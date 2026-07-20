@@ -9,7 +9,6 @@
 #include <hpx/config.hpp>
 #include <hpx/async_base/detail/query_first_fallback.hpp>
 #include <hpx/modules/async_base.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/topology/detail/mask_fallback.hpp>
 
 #include <type_traits>

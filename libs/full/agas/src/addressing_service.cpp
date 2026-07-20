@@ -286,13 +286,9 @@ namespace hpx::agas {
             endpoints = locality_ns_->resolve_locality(gid);
             if (endpoints.empty())
             {
-                std::string const str = hpx::util::format(
-                    "couldn't resolve the given target locality ({})", gid);
-
-                l.unlock();
-
                 HPX_THROWS_IF(ec, hpx::error::bad_parameter,
-                    "addressing_service::resolve_locality", str);
+                    "addressing_service::resolve_locality",
+                    "couldn't resolve the given target locality ({})", gid);
 
                 static parcelset::endpoints_type const empty_endpoints;
                 return empty_endpoints;

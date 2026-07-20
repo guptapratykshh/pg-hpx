@@ -7,11 +7,12 @@
 #pragma once
 
 #include <hpx/config.hpp>
+#include <hpx/functional/invoke.hpp>
 #include <hpx/functional/invoke_fused.hpp>
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
+#include <hpx/functional/traits/is_invocable.hpp>
 #include <hpx/modules/datastructures.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/tracing.hpp>
 #include <hpx/modules/type_support.hpp>
 

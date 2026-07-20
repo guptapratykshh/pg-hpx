@@ -8,39 +8,39 @@
 #pragma once
 
 #include <hpx/config.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 
-#include <type_traits>
+#include <concepts>
 #include <utility>
 
 namespace hpx::experimental {
 
+    // TODO(): prefer_t no longer dispatches through tag_invoke.
+    //   Before: prefer(tag, obj, prop) could be customized by defining
+    //     tag_invoke(prefer_t, tag, obj, prop) for a type.
+    //   Now: prefer(tag, obj, prop) simply calls tag(obj, prop) if possible,
+    //     else returns obj unchanged. To customize behavior, customize tag
+    //     itself (i.e. define tag_invoke(tag, obj, prop)).
     HPX_CXX_CORE_EXPORT inline constexpr struct prefer_t
-      : hpx::functional::detail::tag_fallback<prefer_t>
     {
+        // call tag(tn...) when invocable
         // clang-format off
         template <typename Tag, typename... Tn>
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(
-                prefer_t, Tag tag, Tn&&... tn)
-#if !defined(HPX_CUDA_VERSION)
-            noexcept(hpx::functional::is_nothrow_tag_invocable_v<Tag, Tn&&...>)
-#endif
+            requires std::invocable<Tag, Tn&&...>
+        constexpr HPX_FORCEINLINE auto operator()(Tag tag, Tn&&... tn) const
+            noexcept(noexcept(tag(HPX_FORWARD(Tn, tn)...)))
             -> decltype(tag(HPX_FORWARD(Tn, tn)...))
         // clang-format on
         {
             return tag(HPX_FORWARD(Tn, tn)...);
         }
 
+        // return t0 unchanged when tag is not invocable
         // clang-format off
         template <typename Tag, typename T0, typename... Tn>
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(
-                prefer_t, Tag, T0&& t0, Tn&&...)
+            requires (!std::invocable<Tag, T0, Tn...>)
+        constexpr HPX_FORCEINLINE auto operator()(Tag, T0&& t0, Tn&&...) const
             noexcept(noexcept(HPX_FORWARD(T0, t0)))
-            -> std::enable_if_t<
-                    !hpx::functional::is_tag_invocable_v<
-                        prefer_t, Tag, T0, Tn...> &&
-                    !hpx::is_invocable_v<Tag, T0, Tn...>,
-                    decltype(HPX_FORWARD(T0, t0))>
+            -> decltype(HPX_FORWARD(T0, t0))
         // clang-format on
         {
             return HPX_FORWARD(T0, t0);

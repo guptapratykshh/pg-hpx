@@ -555,8 +555,15 @@ namespace hpx::local::detail {
             affinity_bind_ = "";
 #else
             ini_config.emplace_back("hpx.bind!=" + affinity_bind_);
+            ini_config.emplace_back("hpx.bind-provided!=1");
 #endif
         }
+#if !defined(__APPLE__)
+        else if (use_process_mask_)
+        {
+            ini_config.emplace_back("hpx.bind-provided!=1");
+        }
+#endif
 
         pu_step_ = detail::handle_pu_step(cfgmap, vm, 1);
 #if defined(__APPLE__)

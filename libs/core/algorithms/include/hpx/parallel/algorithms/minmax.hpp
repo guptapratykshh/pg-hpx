@@ -373,6 +373,7 @@ namespace hpx {
 #include <hpx/algorithms/traits/projected.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/loop.hpp>
@@ -1174,14 +1175,14 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::min_element
     HPX_CXX_CORE_EXPORT inline constexpr struct min_element_t final
-      : hpx::detail::tag_parallel_algorithm<min_element_t>
+      : hpx::detail::tag_dispatch<min_element_t,
+            hpx::detail::tag_parallel_algorithm<min_element_t>>
     {
         template <typename FwdIter, typename F = hpx::parallel::detail::less>
         // clang-format off
             requires(hpx::traits::is_iterator_v<FwdIter>)
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            hpx::min_element_t, FwdIter first, FwdIter last, F f = F())
+        static FwdIter invoke_default(FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
@@ -1198,7 +1199,7 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::min_element_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,
@@ -1213,7 +1214,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::max_element
     HPX_CXX_CORE_EXPORT inline constexpr struct max_element_t final
-      : hpx::detail::tag_parallel_algorithm<max_element_t>
+      : hpx::detail::tag_dispatch<max_element_t,
+            hpx::detail::tag_parallel_algorithm<max_element_t>>
     {
         template <typename FwdIter, typename F = hpx::parallel::detail::less>
         // clang-format off
@@ -1221,8 +1223,7 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter>
             )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            hpx::max_element_t, FwdIter first, FwdIter last, F f = F())
+        static FwdIter invoke_default(FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
@@ -1239,7 +1240,7 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::max_element_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,
@@ -1254,7 +1255,8 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::minmax_element
     HPX_CXX_CORE_EXPORT inline constexpr struct minmax_element_t final
-      : hpx::detail::tag_parallel_algorithm<minmax_element_t>
+      : hpx::detail::tag_dispatch<minmax_element_t,
+            hpx::detail::tag_parallel_algorithm<minmax_element_t>>
     {
         template <typename FwdIter, typename F = hpx::parallel::detail::less>
         // clang-format off
@@ -1262,8 +1264,8 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter>
             )
         // clang-format on
-        friend minmax_element_result<FwdIter> tag_fallback_invoke(
-            hpx::minmax_element_t, FwdIter first, FwdIter last, F f = F())
+        static minmax_element_result<FwdIter> invoke_default(
+            FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,
                 "Required at least forward iterator.");
@@ -1280,7 +1282,7 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::minmax_element_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, F f = F())
         {
             static_assert(std::forward_iterator<FwdIter>,

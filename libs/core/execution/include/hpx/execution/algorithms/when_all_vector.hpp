@@ -18,7 +18,6 @@
 #include <hpx/modules/datastructures.hpp>
 #include <hpx/modules/execution_base.hpp>
 #include <hpx/modules/synchronization.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/type_support.hpp>
 
 #include <atomic>
@@ -493,17 +492,15 @@ namespace hpx::execution::experimental {
     //
     // The returned sender has no completion schedulers.
     HPX_CXX_CORE_EXPORT inline constexpr struct when_all_vector_t final
-      : hpx::functional::detail::tag_fallback<when_all_vector_t>
     {
-    private:
         // clang-format off
         template <typename Sender,
             HPX_CONCEPT_REQUIRES_(
                 hpx::execution::experimental::is_sender_v<Sender>
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(
-            when_all_vector_t, std::vector<Sender>&& senders)
+        constexpr HPX_FORCEINLINE auto operator()(
+            std::vector<Sender>&& senders) const
         {
             return when_all_vector_detail::when_all_vector_sender<Sender>{
                 HPX_MOVE(senders)};
@@ -515,8 +512,8 @@ namespace hpx::execution::experimental {
                 hpx::execution::experimental::is_sender_v<Sender>
             )>
         // clang-format on
-        friend constexpr HPX_FORCEINLINE auto tag_fallback_invoke(
-            when_all_vector_t, std::vector<Sender> const& senders)
+        constexpr HPX_FORCEINLINE auto operator()(
+            std::vector<Sender> const& senders) const
         {
             return when_all_vector_detail::when_all_vector_sender<Sender>{
                 senders};

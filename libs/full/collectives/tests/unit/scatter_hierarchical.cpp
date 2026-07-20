@@ -194,6 +194,75 @@ void test_non_power_of_arity()
     }
 }
 
+// The hierarchical tree hardcodes site 0 as the root at every level, so
+// scatter_to (root-side) must reject any caller whose this_site matches a
+// non-root communicator, and scatter_from (non-root-side) must reject
+// site 0. Both rejections happen before communication; the scatter_to role
+// check also precedes its vector-size check.
+void test_hierarchical_role_rejected()
+{
+    constexpr char const* basename =
+        "/test/scatter_hierarchical/role_rejections/";
+
+    auto const root_comms = create_hierarchical_communicator(basename,
+        num_sites_arg(2), this_site_arg(0), arity_arg(2), generation_arg(),
+        root_site_arg(), flat_fallback_threshold_arg(0));
+    (void) root_comms.get(0).get_id();
+
+    auto const non_root_comms = create_hierarchical_communicator(basename,
+        num_sites_arg(2), this_site_arg(1), arity_arg(2), generation_arg(),
+        root_site_arg(), flat_fallback_threshold_arg(0));
+    (void) non_root_comms.get(0).get_id();
+
+    bool scatter_to_rejected = false;
+    try
+    {
+        // Correctly sized (== num_sites) so only the role check can fire.
+        std::vector<std::uint32_t> data{42u, 43u};
+        scatter_to(hpx::launch::sync, non_root_comms, std::move(data),
+            this_site_arg(1), generation_arg(1));
+    }
+    catch (hpx::exception const& e)
+    {
+        scatter_to_rejected = true;
+        HPX_TEST_EQ(e.get_error(), hpx::error::bad_parameter);
+    }
+    HPX_TEST(scatter_to_rejected);
+
+    bool scatter_from_rejected = false;
+    try
+    {
+        scatter_from<std::uint32_t>(
+            hpx::launch::sync, root_comms, this_site_arg(0), generation_arg(1));
+    }
+    catch (hpx::exception const& e)
+    {
+        scatter_from_rejected = true;
+        HPX_TEST_EQ(e.get_error(), hpx::error::bad_parameter);
+    }
+    HPX_TEST(scatter_from_rejected);
+}
+
+// The flat basename overload of scatter_from requires this_site to differ
+// from root_site; the check runs synchronously before any communicator is
+// created, so this is safe to run on any locality count.
+void test_flat_basename_site_equals_root_rejected()
+{
+    bool rejected = false;
+    try
+    {
+        scatter_from<std::uint32_t>(hpx::launch::sync,
+            "/test/scatter_hierarchical/flat_root_rejected/", this_site_arg(),
+            generation_arg(), root_site_arg(0));
+    }
+    catch (hpx::exception const& e)
+    {
+        rejected = true;
+        HPX_TEST_EQ(e.get_error(), hpx::error::bad_parameter);
+    }
+    HPX_TEST(rejected);
+}
+
 int hpx_main()
 {
 #if defined(HPX_HAVE_NETWORKING)
@@ -224,6 +293,8 @@ int hpx_main()
         }
 
         test_non_power_of_arity();
+        test_hierarchical_role_rejected();
+        test_flat_basename_site_equals_root_rejected();
     }
 
     return hpx::finalize();

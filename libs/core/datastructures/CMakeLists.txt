@@ -48,6 +48,7 @@ set(datastructures_headers
     hpx/datastructures/detail/dynamic_bitset.hpp
     hpx/datastructures/detail/flat_map.hpp
     hpx/datastructures/detail/flat_set.hpp
+    hpx/datastructures/detail/forward_list.hpp
     hpx/datastructures/detail/intrusive_list.hpp
     hpx/datastructures/detail/small_vector.hpp
     hpx/datastructures/detail/optional.hpp
@@ -99,6 +100,7 @@ add_hpx_module(
     "hpx/datastructures/detail/dynamic_bitset.hpp"
     "hpx/datastructures/detail/flat_map.hpp"
     "hpx/datastructures/detail/flat_set.hpp"
+    "hpx/datastructures/detail/forward_list.hpp"
     "hpx/datastructures/detail/intrusive_list.hpp"
     "hpx/datastructures/detail/small_vector.hpp"
   MODULE_DEPENDENCIES

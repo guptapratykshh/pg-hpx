@@ -122,6 +122,7 @@ namespace hpx {
 #include <hpx/parallel/algorithms/copy.hpp>
 #include <hpx/parallel/algorithms/detail/advance_and_get_distance.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/reverse.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
@@ -322,9 +323,9 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::shift_right
     HPX_CXX_CORE_EXPORT inline constexpr struct shift_right_t final
-      : hpx::detail::tag_parallel_algorithm<shift_right_t>
+      : hpx::detail::tag_dispatch<shift_right_t,
+            hpx::detail::tag_parallel_algorithm<shift_right_t>>
     {
-    private:
         template <typename FwdIter, typename Size>
         // clang-format off
             requires (
@@ -332,8 +333,7 @@ namespace hpx {
                 std::is_integral_v<Size>
             )
         // clang-format on
-        friend FwdIter tag_fallback_invoke(
-            shift_right_t, FwdIter first, FwdIter last, Size n)
+        static FwdIter invoke_default(FwdIter first, FwdIter last, Size n)
         {
             static_assert(std::forward_iterator<FwdIter>,
                 "Requires at least forward iterator.");
@@ -350,7 +350,7 @@ namespace hpx {
                 std::is_integral_v<Size>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(shift_right_t,
+        static decltype(auto) invoke_default(
             ExPolicy&& policy, FwdIter first, FwdIter last, Size n)
         {
             static_assert(std::forward_iterator<FwdIter>,

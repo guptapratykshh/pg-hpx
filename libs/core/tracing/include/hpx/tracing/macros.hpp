@@ -10,6 +10,12 @@
 #include <hpx/config.hpp>
 #include <hpx/preprocessor/cat.hpp>
 
+#if defined(HPX_HAVE_TRACY) ||                                                 \
+    (defined(HPX_HAVE_ITTNOTIFY) && HPX_HAVE_ITTNOTIFY != 0) ||                \
+    defined(HPX_HAVE_APEX)
+#define HPX_HAVE_TRACING
+#endif
+
 #if defined(HPX_HAVE_TRACY)
 #define HPX_TRACING_MARK_EVENT(name)                                           \
     hpx::tracing::mark_event HPX_PP_CAT(hpx_trace_mark_, __LINE__)(name)

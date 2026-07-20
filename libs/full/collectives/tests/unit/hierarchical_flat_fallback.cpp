@@ -117,6 +117,48 @@ void test_distributed_fallback_all_to_all()
         HPX_TEST_EQ(fb_result[i], expected[i]);
     }
 
+    std::vector<std::string> string_send_data;
+    std::vector<std::string> string_expected;
+    string_send_data.reserve(num_localities);
+    string_expected.reserve(num_localities);
+    for (std::uint32_t site = 0; site != num_localities; ++site)
+    {
+        string_send_data.push_back(
+            std::to_string(this_locality) + "->" + std::to_string(site));
+        string_expected.push_back(
+            std::to_string(site) + "->" + std::to_string(this_locality));
+    }
+
+    auto const string_fb_result =
+        all_to_all(fb_clients, std::vector<std::string>(string_send_data),
+            this_site_arg(this_locality), generation_arg(2))
+            .get();
+    HPX_TEST_EQ(string_fb_result.size(), string_expected.size());
+    for (std::size_t i = 0; i != string_expected.size(); ++i)
+    {
+        HPX_TEST_EQ(string_fb_result[i], string_expected[i]);
+    }
+
+    std::vector<bool> bool_send_data;
+    std::vector<bool> bool_expected;
+    bool_send_data.reserve(num_localities);
+    bool_expected.reserve(num_localities);
+    for (std::uint32_t site = 0; site != num_localities; ++site)
+    {
+        bool_send_data.push_back(this_locality < site);
+        bool_expected.push_back(site < this_locality);
+    }
+
+    auto const bool_fb_result =
+        all_to_all(fb_clients, std::vector<bool>(bool_send_data),
+            this_site_arg(this_locality), generation_arg(3))
+            .get();
+    HPX_TEST_EQ(bool_fb_result.size(), bool_expected.size());
+    for (std::size_t i = 0; i != bool_expected.size(); ++i)
+    {
+        HPX_TEST_EQ(bool_fb_result[i], bool_expected[i]);
+    }
+
     // Force tree path; results must match. With 2 localities and arity 2 a
     // tree is structurally impossible (arity >= num_sites dispatches flat),
     // so this leg needs at least 3.
@@ -141,6 +183,26 @@ void test_distributed_fallback_all_to_all()
         for (std::size_t i = 0; i != expected.size(); ++i)
         {
             HPX_TEST_EQ(tree_result[i], expected[i]);
+        }
+
+        auto const string_tree_result =
+            all_to_all(tree_clients, std::vector<std::string>(string_send_data),
+                this_site_arg(this_locality), generation_arg(2))
+                .get();
+        HPX_TEST_EQ(string_tree_result.size(), string_expected.size());
+        for (std::size_t i = 0; i != string_expected.size(); ++i)
+        {
+            HPX_TEST_EQ(string_tree_result[i], string_expected[i]);
+        }
+
+        auto const bool_tree_result =
+            all_to_all(tree_clients, std::vector<bool>(bool_send_data),
+                this_site_arg(this_locality), generation_arg(3))
+                .get();
+        HPX_TEST_EQ(bool_tree_result.size(), bool_expected.size());
+        for (std::size_t i = 0; i != bool_expected.size(); ++i)
+        {
+            HPX_TEST_EQ(bool_tree_result[i], bool_expected[i]);
         }
     }
 }

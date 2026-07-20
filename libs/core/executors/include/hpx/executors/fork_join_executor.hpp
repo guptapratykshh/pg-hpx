@@ -1245,10 +1245,9 @@ namespace hpx::execution::experimental {
         std::shared_ptr<shared_data> shared_data_ = nullptr;
 
         template <typename F, typename... Ts>
-        friend void tag_invoke(hpx::parallel::execution::post_t,
-            fork_join_executor const& exec, F&& f, Ts&&... ts)
+        void post(F&& f, Ts&&... ts) const
         {
-            exec.shared_data_->async_invoke(
+            shared_data_->async_invoke(
                 hpx::bind_back(HPX_FORWARD(F, f), HPX_FORWARD(Ts, ts)...));
         }
 

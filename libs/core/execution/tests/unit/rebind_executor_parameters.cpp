@@ -8,7 +8,7 @@
 #include <hpx/execution.hpp>
 #include <hpx/future.hpp>
 #include <hpx/init.hpp>
-#include <hpx/modules/tag_invoke.hpp>
+#include <hpx/modules/functional.hpp>
 #include <hpx/modules/testing.hpp>
 
 #include <atomic>

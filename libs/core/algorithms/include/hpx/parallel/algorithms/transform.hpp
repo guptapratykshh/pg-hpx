@@ -287,6 +287,7 @@ namespace hpx {
 #include <hpx/modules/type_support.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
 #include <hpx/parallel/algorithms/detail/distance.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
 #include <hpx/parallel/util/detail/sender_util.hpp>
 #include <hpx/parallel/util/foreach_partitioner.hpp>
@@ -942,9 +943,9 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::transform
     HPX_CXX_CORE_EXPORT inline constexpr struct transform_t final
-      : hpx::detail::tag_parallel_algorithm<transform_t>
+      : hpx::detail::tag_dispatch<transform_t,
+            hpx::detail::tag_parallel_algorithm<transform_t>>
     {
-    private:
         template <typename FwdIter1, typename FwdIter2, typename F>
         // clang-format off
             requires (
@@ -952,8 +953,8 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter2>
             )
         // clang-format on
-        friend FwdIter2 tag_fallback_invoke(
-            hpx::transform_t, FwdIter1 first, FwdIter1 last, FwdIter2 dest, F f)
+        static FwdIter2 invoke_default(
+            FwdIter1 first, FwdIter1 last, FwdIter2 dest, F f)
         {
             static_assert(std::input_iterator<FwdIter1>,
                 "Requires at least input iterator.");
@@ -974,9 +975,8 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter2>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::transform_t,
-            ExPolicy&& policy, FwdIter1 first, FwdIter1 last, FwdIter2 dest,
-            F f)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first,
+            FwdIter1 last, FwdIter2 dest, F f)
         {
             static_assert(std::forward_iterator<FwdIter1>,
                 "Requires at least forward iterator.");
@@ -994,8 +994,8 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter2> &&
                 hpx::traits::is_iterator_v<FwdIter3>)
         // clang-format on
-        friend FwdIter3 tag_fallback_invoke(hpx::transform_t, FwdIter1 first1,
-            FwdIter1 last1, FwdIter2 first2, FwdIter3 dest, F f)
+        static FwdIter3 invoke_default(FwdIter1 first1, FwdIter1 last1,
+            FwdIter2 first2, FwdIter3 dest, F f)
         {
             static_assert(
                 std::input_iterator<FwdIter1> && std::input_iterator<FwdIter2>,
@@ -1021,9 +1021,8 @@ namespace hpx {
                 hpx::traits::is_iterator_v<FwdIter3>
             )
         // clang-format on
-        friend decltype(auto) tag_fallback_invoke(hpx::transform_t,
-            ExPolicy&& policy, FwdIter1 first1, FwdIter1 last1, FwdIter2 first2,
-            FwdIter3 dest, F f)
+        static decltype(auto) invoke_default(ExPolicy&& policy, FwdIter1 first1,
+            FwdIter1 last1, FwdIter2 first2, FwdIter3 dest, F f)
         {
             static_assert(
                 std::input_iterator<FwdIter1> && std::input_iterator<FwdIter2>,

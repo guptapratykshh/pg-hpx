@@ -70,6 +70,7 @@ namespace hpx::tracy {
             char const* zone_name = "fiber";
             std::uint32_t color = 0;
             bool active = false;
+            bool just_entered = false;
         };
 
         fiber_zone_data& current_fiber_zone() noexcept
@@ -150,6 +151,7 @@ namespace hpx::tracy {
             open_fiber_zone(fz, safe_zone_name, color);
             fz.zone_name = safe_zone_name;
             fz.color = color;
+            fz.just_entered = true;
         }
 
         HPX_CORE_EXPORT void stop_fiber_zone() noexcept
@@ -174,6 +176,7 @@ namespace hpx::tracy {
             char const* suspend_reason) noexcept
         {
             auto& fz = current_fiber_zone();
+            fz.just_entered = false;
             if (!fz.active)
                 return;
 
@@ -206,6 +209,11 @@ namespace hpx::tracy {
             char const* zone_name, std::uint32_t color) noexcept
         {
             auto& fz = current_fiber_zone();
+            if (fz.just_entered)
+            {
+                fz.just_entered = false;
+                return;
+            }
             if (!fz.active)
                 return;
 

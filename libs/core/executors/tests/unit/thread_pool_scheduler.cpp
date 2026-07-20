@@ -2100,7 +2100,6 @@ void test_completion_scheduler()
     {
         auto sender =
             ex::then(ex::schedule(ex::thread_pool_scheduler{}), []() {});
-        using hpx::functional::tag_invoke;
         auto completion_scheduler =
             ex::get_completion_scheduler<ex::set_value_t>(ex::get_env(sender));
         static_assert(

@@ -560,7 +560,8 @@ namespace hpx::local::detail {
                 "on the number of total cores in the system)")
             ("hpx:queuing", value<argument_string>(),
                 "the queue scheduling policy to use, options are "
-                "'local', 'local-priority-fifo','local-priority-lifo', "
+                "'local', 'local-priority-fifo', 'local-priority-fifo-double', "
+                "'local-priority-lifo', "
                 "'abp-priority-fifo', 'abp-priority-lifo', 'static', "
                 "'static-priority', 'local-workrequesting-fifo',"
                 "'local-workrequesting-lifo', and 'local-workrequesting-mc' "

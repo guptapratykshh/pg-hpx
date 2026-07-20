@@ -25,6 +25,7 @@ set(tests
     async_remote
     async_remote_client
     async_unwrap_result
+    distributed_scheduler
     post_remote
     post_remote_client
     remote_dataflow
@@ -34,6 +35,11 @@ set(tests
 set(async_continue_PARAMETERS LOCALITIES 2)
 set(async_continue_cb_PARAMETERS LOCALITIES 2)
 set(async_remote_PARAMETERS LOCALITIES 2)
+
+if(HPX_WITH_CXX26_REFLECTION)
+  set(tests ${tests} async_remote_reflect)
+  set(async_remote_reflect_PARAMETERS LOCALITIES 2)
+endif()
 set(async_remote_client_PARAMETERS LOCALITIES 2)
 set(async_cb_remote_PARAMETERS LOCALITIES 2)
 set(async_cb_remote_client_PARAMETERS LOCALITIES 2)
@@ -43,6 +49,7 @@ set(post_remote_client_PARAMETERS LOCALITIES 2)
 
 set(remote_dataflow_PARAMETERS THREADS_PER_LOCALITY 4)
 set(remote_dataflow_PARAMETERS LOCALITIES 2)
+set(distributed_scheduler_PARAMETERS LOCALITIES 2)
 
 foreach(test ${tests})
   set(sources ${test}.cpp)

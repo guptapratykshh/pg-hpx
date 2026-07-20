@@ -12,6 +12,7 @@
 #include <hpx/modules/errors.hpp>
 #include <hpx/modules/filesystem.hpp>
 #include <hpx/modules/format.hpp>
+#include <hpx/modules/functional.hpp>
 
 #include <memory>
 #include <mutex>
@@ -279,7 +280,9 @@ namespace hpx::util::plugin {
             // Cast to the right type.
             dlerror();    // Clear the error state.
 
-            return std::make_pair(address, free_dll<SymbolType>(handle, mtx_));
+            return std::make_pair(address,
+                hpx::function<void(SymbolType)>(
+                    free_dll<SymbolType>(handle, mtx_)));
         }
 
         void keep_alive(error_code& ec = throws)

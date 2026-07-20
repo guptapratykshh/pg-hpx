@@ -109,7 +109,7 @@ namespace hpx::threads::detail {
         if (do_background_work)
         {
             // do background work in parcel layer and in agas
-            background_thread = create_background_thread(scheduler, num_thread,
+            create_background_thread(background_thread, scheduler, num_thread,
                 params, background_running, idle_loop_count);
         }
 
@@ -187,6 +187,8 @@ namespace hpx::threads::detail {
                                 thrd_stat.get_previous(),
                                 thread_schedule_state::active);
 
+                            hpx::tracing::task_executing(thrdptr);
+
 #ifdef HPX_HAVE_THREAD_IDLE_RATES
                             auto tfunc_time_collector_inner =
                                 hpx::experimental::scope_exit([&idle_rate] {
@@ -230,8 +232,18 @@ namespace hpx::threads::detail {
 
                                 thrd_stat = (*thrdptr)(context_storage);
 
+                                auto prev_state = thrd_stat.get_previous();
+                                auto on_exit =
+                                    hpx::experimental::scope_exit([&] {
+                                        if (prev_state ==
+                                            thread_schedule_state::terminated)
+                                        {
+                                            hpx::tracing::task_completed(
+                                                thrdptr);
+                                        }
+                                    });
                                 profiler.handle_post_execution(
-                                    thrdptr, thrd_stat.get_previous());
+                                    thrdptr, prev_state);
                             }
 
                             detail::write_state_log(scheduler, num_thread, thrd,

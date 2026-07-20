@@ -15,6 +15,7 @@
 #include <hpx/modules/functional.hpp>
 #include <hpx/modules/threading_base.hpp>
 #include <hpx/modules/tracing.hpp>
+#include <hpx/threading_base/thread_num_tss.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -137,10 +138,29 @@ namespace hpx::threads::detail {
                 hpx::tracing::scoped_task_timer profiler(
                     thrdptr->get_timer_data());
 
+#if defined(HPX_HAVE_THREADS_GET_STACK_POINTER)
+                bool const recurse_asynchronously =
+                    !this_thread::has_sufficient_stack_space();
+#else
+                bool const recurse_asynchronously =
+                    (threads::get_continuation_recursion_count() + 1) >
+                    HPX_CONTINUATION_MAX_RECURSION_DEPTH;
+#endif
+                if (!recurse_asynchronously)
+                {
+                    hpx::tracing::task_executing(thrdptr);
+                }
+
                 thrd_stat = handle_execute_thread(thrd.noref());
 
-                profiler.handle_post_execution(
-                    thrdptr, thrd_stat.get_previous());
+                auto prev_state = thrd_stat.get_previous();
+                auto on_exit = hpx::experimental::scope_exit([&] {
+                    if (prev_state == thread_schedule_state::terminated)
+                    {
+                        hpx::tracing::task_completed(thrdptr);
+                    }
+                });
+                profiler.handle_post_execution(thrdptr, prev_state);
             }
             else
             {

@@ -1,5 +1,5 @@
 //  Copyright (c) 2019 Thomas Heller
-//  Copyright (c) 2020-2025 Hartmut Kaiser
+//  Copyright (c) 2020-2026 Hartmut Kaiser
 //
 //  SPDX-License-Identifier: BSL-1.0
 //  Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -65,7 +65,7 @@ namespace hpx::threads {
         do_yield(desc, hpx::threads::thread_schedule_state::pending);
     }
 
-    bool execution_agent::yield_k(std::size_t k, char const* desc)
+    bool execution_agent::yield_k(std::size_t const k, char const* desc)
     {
         if (k < 4)    //-V112
         {
@@ -91,7 +91,7 @@ namespace hpx::threads {
     }
 
     void execution_agent::resume(
-        hpx::threads::thread_priority priority, char const* desc)
+        hpx::threads::thread_priority const priority, char const* desc)
     {
         do_resume(priority, desc, threads::thread_restart_state::signaled);
     }
@@ -107,17 +107,22 @@ namespace hpx::threads {
         do_yield(desc, threads::thread_schedule_state::suspended);
     }
 
-    void execution_agent::sleep_for(
-        hpx::chrono::steady_duration const& sleep_duration, char const* desc)
+    threads::thread_restart_state execution_agent::sleep_for(
+        hpx::chrono::steady_duration const& sleep_duration,
+        hpx::move_only_function<bool()>&& wait_cond, char const* desc)
     {
-        sleep_until(sleep_duration.from_now(), desc);
+        return sleep_until(
+            sleep_duration.from_now(), HPX_MOVE(wait_cond), desc);
     }
 
-    void execution_agent::sleep_until(
-        hpx::chrono::steady_time_point const& sleep_time, char const* desc)
+    threads::thread_restart_state execution_agent::sleep_until(
+        hpx::chrono::steady_time_point const& sleep_time,
+        hpx::move_only_function<bool()>&& wait_cond, char const* desc)
     {
-        // Just yield until time has passed by...
+        // Just yield until time has passed by (or until wait_condition has been
+        // met)...
         auto now = std::chrono::steady_clock::now();
+        auto const cond = HPX_MOVE(wait_cond);
 
         // Note: we yield at least once to allow for other threads to make
         // progress in any case. We also use yield instead of yield_k for the
@@ -134,15 +139,23 @@ namespace hpx::threads {
             {
                 do_yield(desc, hpx::threads::thread_schedule_state::pending);
             }
+
+            if (cond && cond())
+            {
+                return threads::thread_restart_state::signaled;
+            }
+
             ++k;
             now = std::chrono::steady_clock::now();
         } while (now < sleep_time.value());
+
+        return threads::thread_restart_state::timeout;
     }
 
     hpx::threads::thread_restart_state execution_agent::do_yield(
         char const* desc, threads::thread_schedule_state state)
     {
-        thread_id_ref_type id = self_.get_thread_id();    // keep alive
+        thread_id_type id = self_.get_outer_thread_id();
         if (HPX_UNLIKELY(!id))
         {
             HPX_THROW_EXCEPTION(hpx::error::null_thread_id,
@@ -163,6 +176,11 @@ namespace hpx::threads {
 
         thrd_data->interruption_point();
 
+        // keep the thread alive if it's not a background thread (background
+        // threads are being kept alive by the scheduler)
+        hpx::threads::keep_alive_thread_id kept_alive(
+            id, !thrd_data->is_background());
+
         if (thrd_data->get_priority() == thread_priority::bound)
         {
             auto const num_thread = hpx::get_local_worker_thread_num();
@@ -175,7 +193,7 @@ namespace hpx::threads {
         {
 #if defined(HPX_HAVE_THREAD_DESCRIPTION)
             [[maybe_unused]] threads::detail::reset_lco_description reset_desc(
-                id.noref(), threads::thread_description(desc));
+                id, threads::thread_description(desc));
 #endif
 #if defined(HPX_HAVE_THREAD_BACKTRACE_ON_SUSPENSION)
             [[maybe_unused]] threads::detail::reset_backtrace reset_bt(id);
@@ -193,15 +211,25 @@ namespace hpx::threads {
             // (current_fiber_zone). It does NOT touch the OS-thread zone
             // (current_region / stop_region), so there is no zone-stack
             // conflict. The sequence is:
-            //   constructor: close running zone \u2192 open grey "suspended" zone
+            //   constructor: close running zone -> open grey "suspended" zone
             //   self_.yield(): fiber parks, scheduler picks next task
-            //   destructor:  close "suspended" zone \u2192 reopen running zone
+            //   destructor:  close "suspended" zone -> reopen running zone
             hpx::tracing::fiber_suspend_region tracy_suspend(desc);
 
             HPX_ASSERT(thrd_data != nullptr &&
                 thrd_data->get_state().state() ==
                     thread_schedule_state::active);
             HPX_ASSERT(state != thread_schedule_state::active);
+
+            if (state == thread_schedule_state::pending ||
+                state == thread_schedule_state::pending_boost)
+            {
+                hpx::tracing::task_yielded(id);
+            }
+            else if (state == thread_schedule_state::suspended)
+            {
+                hpx::tracing::task_suspended(id, desc);
+            }
 
             // actual yield operation
             statex = self_.yield(
@@ -210,6 +238,11 @@ namespace hpx::threads {
             HPX_ASSERT(thrd_data != nullptr &&
                 thrd_data->get_state().state() ==
                     thread_schedule_state::active);
+
+            if (state == thread_schedule_state::suspended)
+            {
+                hpx::tracing::task_resumed(id, statex);
+            }
         }
 
         // handle interruption, if needed
@@ -226,8 +259,9 @@ namespace hpx::threads {
         return statex;
     }
 
-    void execution_agent::do_resume(hpx::threads::thread_priority priority,
-        char const* /* desc */, hpx::threads::thread_restart_state statex) const
+    void execution_agent::do_resume(
+        hpx::threads::thread_priority const priority, char const* /* desc */,
+        hpx::threads::thread_restart_state const statex) const
     {
         threads::detail::set_thread_state(self_.get_thread_id(),
             thread_schedule_state::pending, statex, priority,

@@ -17,7 +17,6 @@
 #include <hpx/functional/detail/function_registration.hpp>
 #include <hpx/functional/traits/get_function_address.hpp>
 #include <hpx/functional/traits/get_function_annotation.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/tracing.hpp>
 
 #include <cstddef>

@@ -129,9 +129,12 @@ struct sender_1
         ex::completion_signatures<ex::set_value_t(int),
             ex::set_error_t(std::exception_ptr)>;
 
-    template <typename Env>
-    friend auto tag_invoke(ex::get_completion_signatures_t, sender_1 const&,
-        Env&&) -> completion_signatures;
+    template <typename Self, typename... Env>
+    static consteval auto get_completion_signatures(Self&&, Env&&...) noexcept
+        -> completion_signatures
+    {
+        return {};
+    }
 
     struct operation_state : immovable
     {
@@ -143,8 +146,7 @@ struct sender_1
         }
     };
 
-    friend operation_state tag_invoke(
-        ex::connect_t, sender_1&&, example_receiver& r)
+    operation_state connect(example_receiver& r) && noexcept
     {
         ++friend_tag_invoke_connect_calls;
         return {{}, r};
@@ -159,9 +161,12 @@ struct sender_2
         ex::completion_signatures<ex::set_value_t(int),
             ex::set_error_t(std::exception_ptr)>;
 
-    template <typename Env>
-    friend auto tag_invoke(ex::get_completion_signatures_t, sender_2 const&,
-        Env&&) -> completion_signatures;
+    template <typename Self, typename... Env>
+    static consteval auto get_completion_signatures(Self&&, Env&&...) noexcept
+        -> completion_signatures
+    {
+        return {};
+    }
 
     struct operation_state : immovable
     {
@@ -172,14 +177,13 @@ struct sender_2
             ex::set_value(std::move(r), 4711);
         }
     };
-};
 
-sender_2::operation_state tag_invoke(
-    ex::connect_t, sender_2, example_receiver& r)
-{
-    ++tag_invoke_connect_calls;
-    return {{}, r};
-}
+    operation_state connect(example_receiver& r) && noexcept
+    {
+        ++tag_invoke_connect_calls;
+        return {{}, r};
+    }
+};
 
 struct sender_3
 {
@@ -189,9 +193,12 @@ struct sender_3
         ex::completion_signatures<ex::set_value_t(int),
             ex::set_error_t(std::exception_ptr)>;
 
-    template <typename Env>
-    friend auto tag_invoke(ex::get_completion_signatures_t, sender_3 const&,
-        Env&&) -> completion_signatures;
+    template <typename Self, typename... Env>
+    static consteval auto get_completion_signatures(Self&&, Env&&...) noexcept
+        -> completion_signatures
+    {
+        return {};
+    }
 
     struct operation_state : immovable
     {
@@ -203,8 +210,7 @@ struct sender_3
         }
     };
 
-    friend operation_state tag_invoke(
-        ex::connect_t, sender_3&&, example_receiver& r)
+    operation_state connect(example_receiver& r) && noexcept
     {
         ++friend_tag_invoke_connect_calls;
         return {{}, r};

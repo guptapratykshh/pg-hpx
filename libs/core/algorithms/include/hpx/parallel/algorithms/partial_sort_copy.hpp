@@ -158,6 +158,7 @@ namespace hpx {
 #include <hpx/parallel/algorithms/copy.hpp>
 #include <hpx/parallel/algorithms/detail/advance_to_sentinel.hpp>
 #include <hpx/parallel/algorithms/detail/dispatch.hpp>
+#include <hpx/parallel/algorithms/detail/tag_dispatch.hpp>
 #include <hpx/parallel/algorithms/partial_sort.hpp>
 #include <hpx/parallel/util/compare_projected.hpp>
 #include <hpx/parallel/util/detail/algorithm_result.hpp>
@@ -354,9 +355,9 @@ namespace hpx {
     ///////////////////////////////////////////////////////////////////////////
     // CPO for hpx::partial_sort_copy
     HPX_CXX_CORE_EXPORT inline constexpr struct partial_sort_copy_t final
-      : hpx::detail::tag_parallel_algorithm<partial_sort_copy_t>
+      : hpx::detail::tag_dispatch<partial_sort_copy_t,
+            hpx::detail::tag_parallel_algorithm<partial_sort_copy_t>>
     {
-    private:
         template <typename InIter, typename RandIter,
             typename Comp = hpx::parallel::detail::less>
         // clang-format off
@@ -369,9 +370,8 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend RandIter tag_fallback_invoke(hpx::partial_sort_copy_t,
-            InIter first, InIter last, RandIter d_first, RandIter d_last,
-            Comp comp = Comp())
+        static RandIter invoke_default(InIter first, InIter last,
+            RandIter d_first, RandIter d_last, Comp comp = Comp())
         {
             static_assert(std::input_iterator<InIter>,
                 "Requires at least input iterator.");
@@ -400,10 +400,9 @@ namespace hpx {
                 >
             )
         // clang-format on
-        friend parallel::util::detail::algorithm_result_t<ExPolicy, RandIter>
-        tag_fallback_invoke(hpx::partial_sort_copy_t, ExPolicy&& policy,
-            FwdIter first, FwdIter last, RandIter d_first, RandIter d_last,
-            Comp comp = Comp())
+        static parallel::util::detail::algorithm_result_t<ExPolicy, RandIter>
+        invoke_default(ExPolicy&& policy, FwdIter first, FwdIter last,
+            RandIter d_first, RandIter d_last, Comp comp = Comp())
         {
             static_assert(std::forward_iterator<FwdIter>,
                 "Requires at least forward iterator.");

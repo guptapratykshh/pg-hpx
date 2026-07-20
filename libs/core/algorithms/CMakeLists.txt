@@ -46,6 +46,7 @@ set(algorithms_headers
     hpx/parallel/algorithms/detail/search.hpp
     hpx/parallel/algorithms/detail/set_operation.hpp
     hpx/parallel/algorithms/detail/spin_sort.hpp
+    hpx/parallel/algorithms/detail/tag_dispatch.hpp
     hpx/parallel/algorithms/detail/transfer.hpp
     hpx/parallel/algorithms/detail/upper_lower_bound.hpp
     hpx/parallel/algorithms/ends_with.hpp

@@ -246,7 +246,7 @@ namespace hpx::collectives {
         hierarchical_communicator const& communicators,
         this_site_arg this_site = this_site_arg(),
         generation_arg const generation = generation_arg(),
-        root_site_arg /*root_site*/ = root_site_arg())
+        root_site_arg root_site = root_site_arg())
     {
         if (generation.is_default() || generation == 0)
         {
@@ -271,9 +271,18 @@ namespace hpx::collectives {
             this_site = agas::get_locality_id();
         }
 
-        if (communicators.size() == 0)
+        if (auto const error =
+                detail::validate_hierarchical_root_site(root_site,
+                    "hpx::collectives::barrier (hierarchical)", "barrier"))
         {
-            return hpx::make_ready_future();
+            return hpx::make_exceptional_future<void>(error);
+        }
+
+        if (auto const error =
+                detail::validate_hierarchical_communicator(communicators,
+                    this_site, "hpx::collectives::barrier (hierarchical)"))
+        {
+            return hpx::make_exceptional_future<void>(error);
         }
 
         auto const [reduce_gen, broadcast_gen] =
@@ -360,6 +369,7 @@ namespace hpx::distributed {
             force_flat_tag);
 
         void create_communicator(bool force_flat);
+        [[nodiscard]] bool is_released() const noexcept;
 
         std::string base_name_;
         std::size_t num_ = 0;

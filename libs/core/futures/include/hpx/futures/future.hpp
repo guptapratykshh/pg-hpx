@@ -30,7 +30,6 @@
 #include <hpx/modules/functional.hpp>
 #include <hpx/modules/memory.hpp>
 #include <hpx/modules/serialization.hpp>
-#include <hpx/modules/tag_invoke.hpp>
 #include <hpx/modules/timing.hpp>
 #include <hpx/modules/type_support.hpp>
 
